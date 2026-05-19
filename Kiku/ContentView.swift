@@ -13,6 +13,11 @@ struct ContentView: View {
                     Label("友達", systemImage: "person.badge.plus")
                 }
 
+            ChatListView()
+                .tabItem {
+                    Label("チャット", systemImage: "bubble.left.and.bubble.right.fill")
+                }
+
             SettingsView()
                 .tabItem {
                     Label("設定", systemImage: "gearshape")
@@ -21,35 +26,127 @@ struct ContentView: View {
     }
 }
 
+// MARK: - GroupListView
+
 struct GroupListView: View {
+    @EnvironmentObject private var groupStore: GroupStore
+    @EnvironmentObject private var statusStore: StatusStore
+    @EnvironmentObject private var profileStore: ProfileStore
+
+    @State private var isShowingCreateSheet    = false
+    @State private var isShowingStatusPost     = false
+    @State private var isShowingBroadcast      = false
+
     var body: some View {
         NavigationStack {
-            VStack {
-                Spacer()
-                Image(systemName: "person.3")
-                    .font(.system(size: 48))
-                    .foregroundStyle(.secondary)
-                    .padding(.bottom, 12)
-                Text("グループがありません")
-                    .font(.headline)
-                Text("＋ボタンから作成してください")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                Spacer()
+            List {
+                // ステータスバナー
+                Section {
+                    StatusBannerRow(
+                        isShowingStatusPost: $isShowingStatusPost
+                    )
+                }
+
+                // 全体送信ボタン
+                Section {
+                    Button {
+                        isShowingBroadcast = true
+                    } label: {
+                        Label("全体に質問を送る", systemImage: "person.2.wave.2.fill")
+                            .foregroundStyle(.blue)
+                    }
+                }
+
+                // グループ一覧
+                Section("グループ") {
+                    if groupStore.groups.isEmpty {
+                        Text("グループがありません\n＋ボタンから作成してください")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 4)
+                    } else {
+                        ForEach(groupStore.groups.sorted(by: { $0.createdAt > $1.createdAt })) { group in
+                            NavigationLink(destination: GroupDetailView(group: group)) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(group.name).font(.headline)
+                                    Text("\(group.memberIds.count)人").font(.caption).foregroundStyle(.secondary)
+                                }
+                                .padding(.vertical, 2)
+                            }
+                        }
+                        .onDelete { groupStore.delete(at: $0) }
+                    }
+                }
             }
-            .navigationTitle("グループ")
+            .navigationTitle("きく")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        // グループ作成シート（後で実装）
-                    } label: {
+                    Button { isShowingCreateSheet = true } label: {
                         Image(systemName: "plus")
                     }
                 }
             }
+            .sheet(isPresented: $isShowingCreateSheet) { GroupCreateView() }
+            .sheet(isPresented: $isShowingStatusPost)   { StatusPostView() }
+            .sheet(isPresented: $isShowingBroadcast)    { BroadcastQuestionView() }
         }
     }
 }
+
+// MARK: - StatusBannerRow
+
+struct StatusBannerRow: View {
+    @EnvironmentObject private var statusStore: StatusStore
+    @EnvironmentObject private var profileStore: ProfileStore
+    @Binding var isShowingStatusPost: Bool
+
+    var body: some View {
+        Button {
+            isShowingStatusPost = true
+        } label: {
+            HStack(spacing: 12) {
+                Text(profileStore.emoji)
+                    .font(.system(size: 36))
+
+                if let status = statusStore.active {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 4) {
+                            Text(status.emoji)
+                            Text(status.text)
+                                .font(.subheadline)
+                                .foregroundStyle(.primary)
+                        }
+                        Text("残り \(remainingText(expiresAt: status.expiresAt))")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text("ステータスを投稿する")
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
+                }
+
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func remainingText(expiresAt: Date) -> String {
+        let diff = expiresAt.timeIntervalSinceNow
+        if diff <= 0 { return "期限切れ" }
+        let hours = Int(diff / 3600)
+        let minutes = Int((diff.truncatingRemainder(dividingBy: 3600)) / 60)
+        if hours > 0 { return "\(hours)時間\(minutes)分" }
+        return "\(minutes)分"
+    }
+}
+
+// MARK: - SettingsView
 
 struct SettingsView: View {
     var body: some View {
@@ -60,6 +157,15 @@ struct SettingsView: View {
     }
 }
 
-#Preview {
-    ContentView()
+// NOTE: Canvas preview does not support embedded Widget Extensions.
+// Use ▶️ (Run on Simulator) to test the full app including Live Activities.
+// Individual view previews (MemberListView, ProfileSetupView, etc.) still work.
+#Preview("グループ一覧") {
+    GroupListView()
+        .environmentObject(GroupStore())
+        .environmentObject(FriendStore())
+        .environmentObject(StatusStore())
+        .environmentObject(ProfileStore())
+        .environmentObject(QuestionStore())
+        .environmentObject(ChatStore())
 }
