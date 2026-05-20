@@ -7,53 +7,83 @@ struct QuestionDetailView: View {
     @EnvironmentObject private var friendStore: FriendStore
 
     @StateObject private var activityManager = ActivityManager.shared
-    @State private var showSuccessAlert = false
-    @State private var launchedMemberName = ""
+    @State private var showReminderAlert = false
+    @State private var reminderCount = 0
+
+    // 未回答メンバー一覧
+    private var pendingAnswers: [Answer] {
+        question.answers.filter { $0.value == "pending" }
+    }
 
     var body: some View {
         List {
+            // 集計サマリー
             Section {
                 summaryCard
             }
 
-            // エラー表示
-            if let error = activityManager.lastError {
-                Section {
+            // 未回答リマインドボタン（CORE 05）
+            Section {
+                Button {
+                    sendReminders()
+                } label: {
+                    HStack {
+                        Image(systemName: "bell.badge.fill")
+                            .foregroundStyle(pendingAnswers.isEmpty ? Color.secondary : Color.orange)
+                        Text("未回答者にリマインドを送る")
+                            .foregroundStyle(pendingAnswers.isEmpty ? .secondary : .primary)
+                        Spacer()
+                        if !pendingAnswers.isEmpty {
+                            Text("\(pendingAnswers.count)人")
+                                .font(.caption)
+                                .padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(Color.orange.opacity(0.15))
+                                .foregroundStyle(.orange)
+                                .clipShape(Capsule())
+                        }
+                    }
+                }
+                .disabled(pendingAnswers.isEmpty)
+            }
+
+            // Live Activity 起動
+            Section("通知バーで回答") {
+                if pendingAnswers.isEmpty {
+                    Text("全員回答済みです")
+                        .foregroundStyle(.secondary)
+                        .font(.subheadline)
+                } else {
+                    ForEach(pendingAnswers, id: \.memberId) { answer in
+                        if let friend = friendStore.friend(for: answer.memberId) {
+                            Button {
+                                activityManager.start(
+                                    question: question,
+                                    memberId: friend.id,
+                                    memberName: friend.name
+                                )
+                            } label: {
+                                HStack {
+                                    Text(friend.emoji).font(.title3)
+                                    Text("\(friend.name) に送る")
+                                    Spacer()
+                                    Image(systemName: "bell.badge.fill")
+                                        .foregroundStyle(.blue)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                // Activityエラー表示
+                if let error = activityManager.lastError {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
                         .font(.caption)
                 }
             }
 
-            // Live Activity 起動セクション
-            Section("通知バーで回答") {
-                ForEach(question.answers.filter { $0.value == "pending" }, id: \.memberId) { answer in
-                    if let friend = friendStore.friend(for: answer.memberId) {
-                        Button {
-                            ActivityManager.shared.start(
-                                question: question,
-                                memberId: friend.id,
-                                memberName: friend.name
-                            )
-                            launchedMemberName = friend.name
-                            showSuccessAlert = activityManager.lastError == nil
-                        } label: {
-                            HStack {
-                                Text(friend.emoji).font(.title3)
-                                Text("\(friend.name) に送る")
-                                Spacer()
-                                Image(systemName: "bell.badge.fill")
-                                    .foregroundStyle(.blue)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                if question.answers.filter({ $0.value == "pending" }).isEmpty {
-                    Text("全員回答済みです").foregroundStyle(.secondary).font(.subheadline)
-                }
-            }
-
+            // メンバー別回答一覧
             Section("メンバーの回答") {
                 ForEach(question.answers, id: \.memberId) { answer in
                     answerRow(answer)
@@ -62,14 +92,43 @@ struct QuestionDetailView: View {
         }
         .navigationTitle(question.text)
         .navigationBarTitleDisplayMode(.inline)
+        .alert("リマインドを送りました", isPresented: $showReminderAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("\(reminderCount)人の未回答メンバーに再通知しました")
+        }
     }
+
+    // MARK: - リマインド送信
+
+    private func sendReminders() {
+        let targets = pendingAnswers.compactMap { answer -> (answer: Answer, friend: Friend)? in
+            guard let friend = friendStore.friend(for: answer.memberId) else { return nil }
+            return (answer, friend)
+        }
+
+        for target in targets {
+            NotificationManager.shared.scheduleQuestion(
+                questionId:   question.id,
+                memberId:     target.friend.id,
+                memberName:   target.friend.name,
+                memberEmoji:  target.friend.emoji,
+                questionText: question.text
+            )
+        }
+
+        reminderCount = targets.count
+        showReminderAlert = true
+    }
+
+    // MARK: - Subviews
 
     private var summaryCard: some View {
         let s = question.summary()
         return HStack(spacing: 0) {
-            summaryItem(label: "はい", count: s.yes, color: .green)
+            summaryItem(label: "はい",   count: s.yes,     color: .green)
             Divider()
-            summaryItem(label: "いいえ", count: s.no, color: .secondary)
+            summaryItem(label: "いいえ", count: s.no,      color: .secondary)
             Divider()
             summaryItem(label: "未回答", count: s.pending, color: .orange)
         }
@@ -91,12 +150,9 @@ struct QuestionDetailView: View {
 
     private func answerRow(_ answer: Answer) -> some View {
         let friend = friendStore.friend(for: answer.memberId)
-        let emoji  = friend?.emoji ?? "👤"
-        let name   = friend?.name  ?? "不明"
-
         return HStack {
-            Text(emoji).font(.title3)
-            Text(name).font(.body)
+            Text(friend?.emoji ?? "👤").font(.title3)
+            Text(friend?.name  ?? "不明").font(.body)
             Spacer()
             badge(for: answer.value)
         }
