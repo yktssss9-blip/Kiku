@@ -149,10 +149,69 @@ struct StatusBannerRow: View {
 // MARK: - SettingsView
 
 struct SettingsView: View {
+    @EnvironmentObject private var profileStore: ProfileStore
+    @State private var isEditingProfile = false
+
     var body: some View {
         NavigationStack {
-            Text("設定")
-                .navigationTitle("設定")
+            List {
+                // プロフィールカード
+                Section {
+                    Button {
+                        isEditingProfile = true
+                    } label: {
+                        HStack(spacing: 16) {
+                            // アバター
+                            profileAvatar
+                                .frame(width: 60, height: 60)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(profileStore.name)
+                                    .font(.headline)
+                                    .foregroundStyle(.primary)
+                                Text("プロフィールを編集")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                // アプリ情報
+                Section("アプリ情報") {
+                    LabeledContent("バージョン", value: "1.0.0")
+                    LabeledContent("ビルド", value: "MVP")
+                }
+            }
+            .navigationTitle("設定")
+            .sheet(isPresented: $isEditingProfile) {
+                ProfileSettingsView()
+                    .environmentObject(profileStore)
+            }
+        }
+    }
+
+    private var profileAvatar: some View {
+        Group {
+            if let image = profileStore.profileImage {
+                image
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 60, height: 60)
+                    .clipShape(Circle())
+            } else {
+                Text(profileStore.emoji)
+                    .font(.system(size: 32))
+                    .frame(width: 60, height: 60)
+                    .background(Color(UIColor.secondarySystemBackground))
+                    .clipShape(Circle())
+            }
         }
     }
 }
