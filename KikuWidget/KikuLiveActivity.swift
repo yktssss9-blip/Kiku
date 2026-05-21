@@ -2,114 +2,101 @@ import SwiftUI
 import WidgetKit
 import ActivityKit
 
-// MARK: - ロック画面通知バー
+// MARK: - ロック画面
 
 struct KikuLiveActivityView: View {
     let context: ActivityViewContext<KikuActivityAttributes>
 
-    var body: some View {
-        VStack(spacing: 12) {
-            // ヘッダー：アプリ名 + 経過タイマー
-            HStack {
-                Image(systemName: "questionmark.circle.fill")
-                    .foregroundStyle(.blue)
-                Text("きく")
-                    .font(.caption).fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
-                Spacer()
+    private var yesURL: URL {
+        URL(string: "kiku://answer?questionId=\(context.attributes.questionId)&memberId=\(context.attributes.memberId)&value=yes")!
+    }
+    private var noURL: URL {
+        URL(string: "kiku://answer?questionId=\(context.attributes.questionId)&memberId=\(context.attributes.memberId)&value=no")!
+    }
 
-                // カウントアップタイマー
+    var body: some View {
+        VStack(spacing: 10) {
+            // 宛先 + タイマー + ポイントヒント
+            HStack {
+                Label("\(context.attributes.memberName)さんへ質問が届きました",
+                      systemImage: "questionmark.circle.fill")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .labelStyle(.titleAndIcon)
+                Spacer()
                 HStack(spacing: 4) {
-                    Image(systemName: "clock")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
                     Text(context.attributes.sentAt, style: .timer)
                         .font(.caption).monospacedDigit()
-                        .foregroundStyle(timerColor(from: context.attributes.sentAt))
+                        .foregroundStyle(timerColor)
+                    Text(pointLabel)
+                        .font(.caption2).foregroundStyle(timerColor)
                 }
             }
 
-            // 質問文
+            // 質問文（大きく）
             Text(context.attributes.questionText)
-                .font(.headline)
+                .font(.title3).fontWeight(.bold)
                 .multilineTextAlignment(.center)
+                .lineLimit(3)
                 .frame(maxWidth: .infinity)
 
-            // 宛先 + ポイント案内
-            HStack {
-                Text("\(context.attributes.memberName)さんへ")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                pointHint(from: context.attributes.sentAt)
-            }
-
-            // 集計バー
-            HStack(spacing: 0) {
-                summaryItem(label: "はい",   count: context.state.yesCount,     color: .green)
-                Divider().frame(height: 24)
-                summaryItem(label: "いいえ", count: context.state.noCount,      color: .secondary)
-                Divider().frame(height: 24)
-                summaryItem(label: "未回答", count: context.state.pendingCount, color: .orange)
-            }
-            .padding(.vertical, 4)
-            .background(Color(UIColor.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-
-            // はい / いいえ ボタン
+            // はい/いいえ ボタン（AppIntents：アプリを開かずに完結）
             HStack(spacing: 10) {
-                answerLink(label: "✅  はい",  value: "yes", bgColor: .green,                   fgColor: .white)
-                answerLink(label: "❌  いいえ", value: "no",  bgColor: Color(UIColor.systemGray4), fgColor: .primary)
+                Button(intent: AnswerIntent(
+                    questionId: context.attributes.questionId,
+                    memberId:   context.attributes.memberId,
+                    value:      "yes"
+                )) {
+                    Label("はい", systemImage: "checkmark.circle.fill")
+                        .font(.subheadline).fontWeight(.bold)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(Color.green)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+
+                Button(intent: AnswerIntent(
+                    questionId: context.attributes.questionId,
+                    memberId:   context.attributes.memberId,
+                    value:      "no"
+                )) {
+                    Label("いいえ", systemImage: "xmark.circle.fill")
+                        .font(.subheadline).fontWeight(.bold)
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(Color(UIColor.systemGray4))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
             }
         }
-        .padding()
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
     }
 
-    // 経過時間に応じてタイマーの色を変える
-    private func timerColor(from date: Date) -> Color {
-        let elapsed = Date().timeIntervalSince(date)
-        if elapsed < 60  { return .green  }   // 1分以内（+20pt圏内）
-        if elapsed < 180 { return .orange }   // 3分以内（+10pt圏内）
-        return .red                            // 時間超過
+    private var timerColor: Color {
+        let e = Date().timeIntervalSince(context.attributes.sentAt)
+        if e < 60  { return .green  }
+        if e < 180 { return .orange }
+        return .red
     }
 
-    // 残りポイント案内
-    private func pointHint(from date: Date) -> some View {
-        let elapsed = Date().timeIntervalSince(date)
-        let text: String
-        let color: Color
-        if elapsed < 60 {
-            text = "⚡️ 今なら +20pt"
-            color = .green
-        } else if elapsed < 180 {
-            text = "🕐 今なら +10pt"
-            color = .orange
-        } else {
-            text = "+2pt"
-            color = .secondary
-        }
-        return Text(text).font(.caption2).foregroundStyle(color)
+    private var pointLabel: String {
+        let e = Date().timeIntervalSince(context.attributes.sentAt)
+        if e < 60  { return "⚡️+20pt" }
+        if e < 180 { return "🕐+10pt"  }
+        return "+2pt"
     }
 
-    private func summaryItem(label: String, count: Int, color: Color) -> some View {
-        VStack(spacing: 2) {
-            Text("\(count)人").font(.title3).fontWeight(.bold).foregroundStyle(color)
-            Text(label).font(.caption2).foregroundStyle(.secondary)
+    private func miniCount(label: String, count: Int, color: Color) -> some View {
+        VStack(spacing: 1) {
+            Text("\(count)").font(.caption).fontWeight(.bold).foregroundStyle(color)
+            Text(label).font(.system(size: 9)).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-    }
-
-    private func answerLink(label: String, value: String, bgColor: Color, fgColor: Color) -> some View {
-        let url = URL(string: "kiku://answer?questionId=\(context.attributes.questionId)&memberId=\(context.attributes.memberId)&value=\(value)")!
-        return Link(destination: url) {
-            Text(label)
-                .font(.subheadline).fontWeight(.semibold)
-                .foregroundStyle(fgColor)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .background(bgColor)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-        }
+        .padding(.vertical, 4)
     }
 }
 
@@ -122,7 +109,7 @@ struct KikuLiveActivityWidget: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 1) {
                         Image(systemName: "questionmark.circle.fill")
                             .foregroundStyle(.blue).font(.title3)
                         Text(context.attributes.memberName)
@@ -130,49 +117,47 @@ struct KikuLiveActivityWidget: Widget {
                     }
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        // Dynamic Islandにもタイマー
-                        Text(context.attributes.sentAt, style: .timer)
-                            .font(.caption2).monospacedDigit()
-                            .foregroundStyle(.orange)
-                        Label("\(context.state.yesCount)", systemImage: "checkmark.circle.fill")
-                            .font(.caption).foregroundStyle(.green)
-                    }
+                    Text(context.attributes.sentAt, style: .timer)
+                        .font(.caption2).monospacedDigit()
+                        .foregroundStyle(.orange)
                 }
                 DynamicIslandExpandedRegion(.center) {
                     Text(context.attributes.questionText)
-                        .font(.subheadline).fontWeight(.semibold)
+                        .font(.caption).fontWeight(.semibold)
                         .lineLimit(2).multilineTextAlignment(.center)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     HStack(spacing: 8) {
-                        let yesURL = URL(string: "kiku://answer?questionId=\(context.attributes.questionId)&memberId=\(context.attributes.memberId)&value=yes")!
-                        let noURL  = URL(string: "kiku://answer?questionId=\(context.attributes.questionId)&memberId=\(context.attributes.memberId)&value=no")!
-                        Link(destination: yesURL) {
+                        Button(intent: AnswerIntent(
+                            questionId: context.attributes.questionId,
+                            memberId:   context.attributes.memberId,
+                            value:      "yes"
+                        )) {
                             Label("はい", systemImage: "checkmark.circle.fill")
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 6)
-                                .background(Color.green)
-                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity).padding(.vertical, 6)
+                                .background(Color.green).foregroundStyle(.white)
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
-                        Link(destination: noURL) {
+                        .buttonStyle(.plain)
+                        Button(intent: AnswerIntent(
+                            questionId: context.attributes.questionId,
+                            memberId:   context.attributes.memberId,
+                            value:      "no"
+                        )) {
                             Label("いいえ", systemImage: "xmark.circle.fill")
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 6)
-                                .background(Color(UIColor.systemGray4))
-                                .foregroundStyle(.primary)
+                                .frame(maxWidth: .infinity).padding(.vertical, 6)
+                                .background(Color(UIColor.systemGray4)).foregroundStyle(.primary)
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
+                        .buttonStyle(.plain)
                     }
-                    .padding(.top, 4)
+                    .padding(.top, 2)
                 }
             } compactLeading: {
                 Image(systemName: "questionmark.circle.fill").foregroundStyle(.blue)
             } compactTrailing: {
                 Text(context.attributes.sentAt, style: .timer)
-                    .font(.caption2).monospacedDigit()
-                    .foregroundStyle(.orange)
+                    .font(.caption2).monospacedDigit().foregroundStyle(.orange)
             } minimal: {
                 Image(systemName: "questionmark.circle.fill").foregroundStyle(.blue)
             }

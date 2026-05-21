@@ -56,11 +56,23 @@ struct ChatView: View {
     }
 
     private var unlockBanner: some View {
-        HStack(spacing: 6) {
+        let currentSession = chatStore.sessions.first { $0.id == session.id }
+        let answerEmoji: String = {
+            switch currentSession?.answerValue {
+            case "yes": return "✅ はい"
+            case "no":  return "❌ いいえ"
+            default:    return ""
+            }
+        }()
+        let bannerText: String = answerEmoji.isEmpty
+            ? "「\(session.questionText)」への回答でチャットが開放されました"
+            : "「\(session.questionText)」に \(answerEmoji) と回答してチャットが開放されました"
+
+        return HStack(spacing: 6) {
             Image(systemName: "lock.open.fill")
                 .font(.caption)
                 .foregroundStyle(.green)
-            Text("「\(session.questionText)」への回答でチャットが開放されました")
+            Text(bannerText)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

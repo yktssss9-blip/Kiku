@@ -10,7 +10,8 @@ private let emojiOptions: [String] = [
 ]
 
 struct ProfileSettingsView: View {
-    @EnvironmentObject private var store: ProfileStore
+    @EnvironmentObject private var store:      ProfileStore
+    @EnvironmentObject private var pointStore: PointStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var name        = ""
@@ -37,6 +38,11 @@ struct ProfileSettingsView: View {
                         Spacer()
                     }
                     .padding(.vertical, 8)
+                }
+
+                // シゴできポイント集計
+                Section {
+                    pointsSummaryRow
                 }
 
                 // 名前
@@ -197,6 +203,75 @@ struct ProfileSettingsView: View {
         }
     }
 
+    // MARK: - Points Summary
+
+    private var totalPoints: Int {
+        pointStore.records.reduce(0) { $0 + $1.points }
+    }
+
+    private var pointsSummaryRow: some View {
+        NavigationLink {
+            pointsHistoryView
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("シゴできポイント（累計）")
+                        .font(.subheadline)
+                    Text("友達が獲得した合計ポイント")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                HStack(spacing: 4) {
+                    Text("🏆")
+                    Text("\(totalPoints)pt")
+                        .fontWeight(.bold)
+                        .foregroundStyle(totalPoints > 0 ? .primary : .secondary)
+                }
+                .font(.subheadline)
+            }
+        }
+    }
+
+    private var pointsHistoryView: some View {
+        List {
+            if pointStore.records.isEmpty {
+                ContentUnavailableView(
+                    "まだ記録がありません",
+                    systemImage: "trophy",
+                    description: Text("質問に回答すると\nポイントが記録されます")
+                )
+            } else {
+                ForEach(pointStore.records.sorted { $0.earnedAt > $1.earnedAt }) { record in
+                    HStack {
+                        Text(record.tier.label)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 64, alignment: .leading)
+                        Text(record.questionText)
+                            .font(.body)
+                            .lineLimit(1)
+                        Spacer()
+                        Text("+\(record.points)pt")
+                            .fontWeight(.semibold)
+                            .foregroundStyle(historyTierColor(record.tier))
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .navigationTitle("ポイント履歴")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func historyTierColor(_ tier: PointTier) -> Color {
+        switch tier {
+        case .fast:   return .orange
+        case .normal: return .blue
+        case .late:   return .secondary
+        }
+    }
+
     // MARK: - Save
 
     private func saveChanges() {
@@ -219,4 +294,5 @@ struct ProfileSettingsView: View {
 #Preview {
     ProfileSettingsView()
         .environmentObject(ProfileStore())
+        .environmentObject(PointStore())
 }

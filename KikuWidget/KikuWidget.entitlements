@@ -4,7 +4,7 @@
 <dict>
     <key>com.apple.security.application-groups</key>
     <array>
-        <string>group.com.kiku.app</string>
+        <string>group.com.yukichi.kiku</string>
     </array>
 </dict>
 </plist>

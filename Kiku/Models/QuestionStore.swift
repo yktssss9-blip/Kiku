@@ -61,18 +61,65 @@ class QuestionStore: ObservableObject {
         questions.append(Question(text: text, groupId: nil, isBroadcast: true, answers: answers))
     }
 
-    // chatStore を外から注入して回答時にチャットを開放する
-    var onAnswered: ((UUID, UUID, String) -> Void)?
+    // 外部から注入するコールバック・ストア
+    // コールバック引数: (questionId, memberId, questionText, answerValue)
+    var onAnswered: ((UUID, UUID, String, String) -> Void)?
+    var pointStore: PointStore?
 
     func submit(questionId: UUID, memberId: UUID, value: String) {
         guard let idx = questions.firstIndex(where: { $0.id == questionId }),
               let aidx = questions[idx].answers.firstIndex(where: { $0.memberId == memberId })
         else { return }
-        questions[idx].answers[aidx].value = value
-        questions[idx].answers[aidx].answeredAt = Date()
-        // チャット開放コールバック
-        let questionText = questions[idx].text
-        onAnswered?(questionId, memberId, questionText)
+
+        let now = Date()
+        questions[idx].answers[aidx].value      = value
+        questions[idx].answers[aidx].answeredAt = now
+
+        let question = questions[idx]
+
+        // ポイント付与：質問送信からの経過時間で決定
+        let elapsed = now.timeIntervalSince(question.createdAt)
+        pointStore?.add(
+            questionId:   questionId,
+            memberId:     memberId,
+            questionText: question.text,
+            elapsed:      elapsed
+        )
+
+        onAnswered?(questionId, memberId, question.text, value)
+
+        // App Groups経由の未処理回答もここで取り込む
+        applyPendingFromSharedStore()
+    }
+
+    // App GroupsのUserDefaultsから未処理の回答を取り込む
+    func applyPendingFromSharedStore() {
+        guard let defaults = UserDefaults(suiteName: "group.com.yukichi.kiku") else { return }
+        let keys = defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix("answer.") }
+        for key in keys {
+            let parts = key.split(separator: ".").map(String.init)
+            guard parts.count == 3,
+                  let qid = UUID(uuidString: parts[1]),
+                  let mid = UUID(uuidString: parts[2]),
+                  let value = defaults.string(forKey: key) else { continue }
+            defaults.removeObject(forKey: key)
+            if let idx = questions.firstIndex(where: { $0.id == qid }),
+               let aidx = questions[idx].answers.firstIndex(where: { $0.memberId == mid }),
+               questions[idx].answers[aidx].value == "pending" {
+                let now = Date()
+                questions[idx].answers[aidx].value      = value
+                questions[idx].answers[aidx].answeredAt = now
+                let q = questions[idx]
+                let elapsed = now.timeIntervalSince(q.createdAt)
+                pointStore?.add(
+                    questionId:   qid,
+                    memberId:     mid,
+                    questionText: q.text,
+                    elapsed:      elapsed
+                )
+                onAnswered?(qid, mid, q.text, value)
+            }
+        }
     }
 
     func questions(for group: KikuGroup) -> [Question] {

@@ -171,9 +171,10 @@ struct AnswerView: View {
             value:      value
         )
         Task {
-            await ActivityManager.shared.update(
+            // 回答したらそのメンバーのLive Activityを終了（集計が見えないように）
+            await ActivityManager.shared.end(
                 questionId: question.id,
-                summary:    question.summary()
+                memberId:   memberId
             )
             // 2秒後に自動で閉じる
             try? await Task.sleep(nanoseconds: 2_000_000_000)

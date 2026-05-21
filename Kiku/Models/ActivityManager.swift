@@ -63,12 +63,22 @@ class ActivityManager: ObservableObject {
         }
     }
 
+    // 質問全体のActivityを終了
     func end(questionId: UUID) async {
         for activity in Activity<KikuActivityAttributes>.activities
             where activity.attributes.questionId == questionId.uuidString {
             await activity.end(nil, dismissalPolicy: .immediate)
         }
         isActive = false
+    }
+
+    // 特定メンバーのActivityを終了（回答後に呼ぶ）
+    func end(questionId: UUID, memberId: UUID) async {
+        for activity in Activity<KikuActivityAttributes>.activities
+            where activity.attributes.questionId == questionId.uuidString
+               && activity.attributes.memberId   == memberId.uuidString {
+            await activity.end(nil, dismissalPolicy: .immediate)
+        }
     }
 
     func applyPendingAnswers(to store: QuestionStore) {

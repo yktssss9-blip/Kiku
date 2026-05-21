@@ -12,8 +12,30 @@ struct ChatSession: Identifiable, Codable {
     var questionId: UUID
     var memberId: UUID
     var questionText: String   // どの質問で開放されたか（表示用）
+    var answerValue: String    // "yes" or "no"（チャット開放のきっかけとなった回答）
     var unlockedAt: Date = Date()
     var messages: [ChatMessage] = []
+
+    // 既存の保存データ（answerValue なし）との後方互換
+    private enum CodingKeys: String, CodingKey {
+        case id, questionId, memberId, questionText, answerValue, unlockedAt, messages
+    }
+    init(questionId: UUID, memberId: UUID, questionText: String, answerValue: String) {
+        self.questionId   = questionId
+        self.memberId     = memberId
+        self.questionText = questionText
+        self.answerValue  = answerValue
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id           = try c.decode(UUID.self,          forKey: .id)
+        questionId   = try c.decode(UUID.self,          forKey: .questionId)
+        memberId     = try c.decode(UUID.self,          forKey: .memberId)
+        questionText = try c.decode(String.self,        forKey: .questionText)
+        answerValue  = (try? c.decode(String.self,      forKey: .answerValue)) ?? ""
+        unlockedAt   = try c.decode(Date.self,          forKey: .unlockedAt)
+        messages     = try c.decode([ChatMessage].self, forKey: .messages)
+    }
 }
 
 class ChatStore: ObservableObject {
@@ -30,17 +52,28 @@ class ChatStore: ObservableObject {
         }
     }
 
-    // 回答時に呼ばれる：チャットを開放
-    func unlock(questionId: UUID, memberId: UUID, questionText: String) {
+    // 回答時に呼ばれる：チャットを開放し、回答内容を最初のメッセージとして追加
+    func unlock(questionId: UUID, memberId: UUID, questionText: String, answerValue: String) {
         let alreadyExists = sessions.contains {
             $0.questionId == questionId && $0.memberId == memberId
         }
         guard !alreadyExists else { return }
-        sessions.append(ChatSession(
+
+        var session = ChatSession(
             questionId:   questionId,
             memberId:     memberId,
-            questionText: questionText
+            questionText: questionText,
+            answerValue:  answerValue
+        )
+
+        // 回答内容を最初のメッセージとして自動挿入
+        let answerLabel = answerValue == "yes" ? "✅ はい" : "❌ いいえ"
+        session.messages.append(ChatMessage(
+            text:     "「\(questionText)」に \(answerLabel) と回答しました",
+            isFromMe: false
         ))
+
+        sessions.append(session)
     }
 
     // メッセージ送信

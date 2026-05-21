@@ -4,7 +4,8 @@ struct QuestionDetailView: View {
     let question: Question
     let group: KikuGroup
     @EnvironmentObject private var questionStore: QuestionStore
-    @EnvironmentObject private var friendStore: FriendStore
+    @EnvironmentObject private var friendStore:   FriendStore
+    @EnvironmentObject private var pointStore:    PointStore
 
     @StateObject private var activityManager = ActivityManager.shared
     @State private var showReminderAlert = false
@@ -150,13 +151,34 @@ struct QuestionDetailView: View {
 
     private func answerRow(_ answer: Answer) -> some View {
         let friend = friendStore.friend(for: answer.memberId)
+
+        // この質問でこのメンバーが獲得したポイント記録
+        let record = pointStore.records.first {
+            $0.questionId == question.id && $0.memberId == answer.memberId
+        }
+
         return HStack {
             Text(friend?.emoji ?? "👤").font(.title3)
             Text(friend?.name  ?? "不明").font(.body)
             Spacer()
+            // 回答済みならポイントティアを表示
+            if let record {
+                Text(record.tier.pointLabel)
+                    .font(.caption2)
+                    .foregroundStyle(tierColor(record.tier))
+                    .padding(.trailing, 4)
+            }
             badge(for: answer.value)
         }
         .padding(.vertical, 2)
+    }
+
+    private func tierColor(_ tier: PointTier) -> Color {
+        switch tier {
+        case .fast:   return .orange
+        case .normal: return .blue
+        case .late:   return .secondary
+        }
     }
 
     private func badge(for value: String) -> some View {

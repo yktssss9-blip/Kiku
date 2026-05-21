@@ -26,12 +26,12 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         let yesAction = UNNotificationAction(
             identifier: Self.yesActionId,
             title: "✅ はい",
-            options: [.foreground]
+            options: []          // アプリを開かずにバックグラウンドで処理
         )
         let noAction = UNNotificationAction(
             identifier: Self.noActionId,
             title: "❌ いいえ",
-            options: [.foreground]
+            options: []
         )
         let category = UNNotificationCategory(
             identifier: Self.categoryId,
@@ -56,7 +56,7 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         content.body  = questionText
         content.sound = .default
         content.categoryIdentifier  = Self.categoryId
-        content.interruptionLevel   = .timeSensitive   // バナーを操作するまで表示し続ける
+        content.interruptionLevel   = .active
         content.userInfo = [
             "questionId": questionId.uuidString,
             "memberId":   memberId.uuidString

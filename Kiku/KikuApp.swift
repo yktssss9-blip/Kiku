@@ -1,5 +1,7 @@
 import SwiftUI
 import UserNotifications
+import Combine
+import ActivityKit
 
 @main
 struct KikuApp: App {
@@ -9,8 +11,10 @@ struct KikuApp: App {
     @StateObject private var questionStore = QuestionStore()
     @StateObject private var statusStore   = StatusStore()
     @StateObject private var chatStore     = ChatStore()
+    @StateObject private var pointStore    = PointStore()
 
     @State private var answerTarget: AnswerTarget? = nil
+    @State private var showLiveActivityDisabledAlert = false
 
     var body: some Scene {
         WindowGroup {
@@ -22,10 +26,38 @@ struct KikuApp: App {
                     .environmentObject(questionStore)
                     .environmentObject(statusStore)
                     .environmentObject(chatStore)
+                    .environmentObject(pointStore)
                     .onAppear {
                         requestNotificationPermission()
                         setupNotificationHandler()
                         setupChatUnlock()
+                        questionStore.pointStore = pointStore
+                        questionStore.applyPendingFromSharedStore()
+                        checkLiveActivityAuthorization()
+                    }
+                    // フォアグラウンド復帰時にも取り込む
+                    .onReceive(
+                        NotificationCenter.default.publisher(
+                            for: UIApplication.willEnterForegroundNotification
+                        )
+                    ) { _ in
+                        questionStore.applyPendingFromSharedStore()
+                    }
+                    // Live Activityボタン → AnswerIntent.perform() が投げる通知を受信して即反映
+                    .onReceive(
+                        NotificationCenter.default.publisher(for: .kikuAnswerSubmitted)
+                    ) { _ in
+                        questionStore.applyPendingFromSharedStore()
+                    }
+                    .alert("Live Activityを有効にしてください", isPresented: $showLiveActivityDisabledAlert) {
+                        Button("設定を開く") {
+                            if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
+                        }
+                        Button("後で", role: .cancel) {}
+                    } message: {
+                        Text("ロック画面・Dynamic Islandでの回答ボタンを使うには、設定 → 通知 → きく → 「Live Activity」をオンにしてください。")
                     }
                     .onOpenURL { url in
                         resolveAnswerTarget(from: url)
@@ -99,14 +131,27 @@ struct KikuApp: App {
     }
 
     private func setupChatUnlock() {
-        questionStore.onAnswered = { questionId, memberId, questionText in
+        questionStore.onAnswered = { questionId, memberId, questionText, answerValue in
             DispatchQueue.main.async {
                 chatStore.unlock(
                     questionId:   questionId,
                     memberId:     memberId,
-                    questionText: questionText
+                    questionText: questionText,
+                    answerValue:  answerValue
                 )
+                Task {
+                    await ActivityManager.shared.end(questionId: questionId, memberId: memberId)
+                }
             }
+        }
+    }
+
+    // MARK: - Live Activity 認証チェック
+
+    private func checkLiveActivityAuthorization() {
+        let info = ActivityAuthorizationInfo()
+        if !info.areActivitiesEnabled {
+            showLiveActivityDisabledAlert = true
         }
     }
 

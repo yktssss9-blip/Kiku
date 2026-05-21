@@ -1,7 +1,7 @@
 import Foundation
 
 public struct SharedStore {
-    public static let suiteName = "group.com.kiku.app"
+    public static let suiteName = "group.com.yukichi.kiku"
 
     public static func saveAnswer(questionId: String, memberId: String, value: String) {
         let key = "answer.\(questionId).\(memberId)"

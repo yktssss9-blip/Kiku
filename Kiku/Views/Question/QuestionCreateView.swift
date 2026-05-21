@@ -36,11 +36,24 @@ struct QuestionCreateView: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("送信する") {
-                        questionStore.send(
-                            text: questionText.trimmingCharacters(in: .whitespaces),
-                            to: group,
-                            friends: friendStore.friends
-                        )
+                        let text = questionText.trimmingCharacters(in: .whitespaces)
+                        questionStore.send(text: text, to: group, friends: friendStore.friends)
+
+                        // 各メンバーの Live Activity を自動起動
+                        Task { @MainActor in
+                            if let question = questionStore.questions.last {
+                                for memberId in group.memberIds {
+                                    let friend = friendStore.friends.first { $0.id == memberId }
+                                    ActivityManager.shared.start(
+                                        question:   question,
+                                        memberId:   memberId,
+                                        memberName: friend?.name ?? "メンバー"
+                                    )
+                                    // 複数起動の間隔を空ける
+                                    try? await Task.sleep(nanoseconds: 300_000_000)
+                                }
+                            }
+                        }
                         dismiss()
                     }
                     .fontWeight(.semibold)
