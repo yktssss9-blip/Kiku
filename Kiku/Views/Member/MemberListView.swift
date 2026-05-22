@@ -58,7 +58,9 @@ struct MemberListView: View {
             Section {
                 ForEach(rankedFriends, id: \.friend.id) { item in
                     RankingRow(rank: item.rank, friend: item.friend, total: item.total,
-                               history: pointStore.history(for: item.friend.id))
+                               history: pointStore.history(for: item.friend.id),
+                               title:   pointStore.title(rank: item.rank,
+                                                        outOf: rankedFriends.count))
                 }
                 .onDelete { indexSet in
                     // 元の friendStore インデックスに変換して削除
@@ -108,6 +110,7 @@ private struct RankingRow: View {
     let friend:  Friend
     let total:   Int
     let history: [PointRecord]
+    let title:   PointTitle
 
     @State private var isExpanded = false
 
@@ -122,10 +125,18 @@ private struct RankingRow: View {
                     rankBadge
                         .frame(width: 44, alignment: .center)
 
-                    // 絵文字 + 名前
+                    // 絵文字 + 名前 + 称号
                     HStack(spacing: 8) {
                         Text(friend.emoji).font(.title3)
-                        Text(friend.name).font(.body)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(friend.name).font(.body)
+                            Text(title.display)
+                                .font(.caption2)
+                                .foregroundStyle(titleColor(title))
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(titleColor(title).opacity(0.12))
+                                .clipShape(Capsule())
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -218,6 +229,16 @@ private struct RankingRow: View {
         case .fast:   return .orange
         case .normal: return .blue
         case .late:   return .secondary
+        }
+    }
+
+    private func titleColor(_ title: PointTitle) -> Color {
+        switch title.color {
+        case "orange": return .orange
+        case "blue":   return .blue
+        case "yellow": return Color(red: 0.8, green: 0.6, blue: 0.0)
+        case "purple": return .purple
+        default:       return .secondary
         }
     }
 }

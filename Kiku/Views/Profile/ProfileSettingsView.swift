@@ -206,7 +206,11 @@ struct ProfileSettingsView: View {
     // MARK: - Points Summary
 
     private var totalPoints: Int {
-        pointStore.records.reduce(0) { $0 + $1.points }
+        // 全メンバーの直近7日間の合計
+        let cutoff = Date().addingTimeInterval(-7 * 24 * 60 * 60)
+        return pointStore.records
+            .filter { $0.earnedAt >= cutoff }
+            .reduce(0) { $0 + $1.points }
     }
 
     private var pointsSummaryRow: some View {
@@ -242,7 +246,8 @@ struct ProfileSettingsView: View {
                     description: Text("質問に回答すると\nポイントが記録されます")
                 )
             } else {
-                ForEach(pointStore.records.sorted { $0.earnedAt > $1.earnedAt }) { record in
+                let cutoff = Date().addingTimeInterval(-7 * 24 * 60 * 60)
+                ForEach(pointStore.records.filter { $0.earnedAt >= cutoff }.sorted { $0.earnedAt > $1.earnedAt }) { record in
                     HStack {
                         Text(record.tier.label)
                             .font(.caption)
@@ -260,7 +265,7 @@ struct ProfileSettingsView: View {
                 }
             }
         }
-        .navigationTitle("ポイント履歴")
+        .navigationTitle("ポイント履歴（直近7日間）")
         .navigationBarTitleDisplayMode(.inline)
     }
 

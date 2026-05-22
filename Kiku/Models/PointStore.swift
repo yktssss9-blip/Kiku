@@ -14,17 +14,30 @@ class PointStore: ObservableObject {
         }
     }
 
-    // MARK: - 集計
+    // MARK: - 集計（直近7日間のみ有効）
 
-    /// メンバーの合計ポイント
-    func total(for memberId: UUID) -> Int {
-        records.filter { $0.memberId == memberId }.reduce(0) { $0 + $1.points }
+    private static let retentionDays: Double = 7
+
+    /// 有効期限内（7日以内）のレコード
+    private var activeRecords: [PointRecord] {
+        let cutoff = Date().addingTimeInterval(-Self.retentionDays * 24 * 60 * 60)
+        return records.filter { $0.earnedAt >= cutoff }
     }
 
-    /// メンバーの獲得履歴（新しい順）
+    /// メンバーの合計ポイント（直近7日間）
+    func total(for memberId: UUID) -> Int {
+        activeRecords.filter { $0.memberId == memberId }.reduce(0) { $0 + $1.points }
+    }
+
+    /// メンバーの獲得履歴（直近7日間・新しい順）
     func history(for memberId: UUID) -> [PointRecord] {
-        records.filter { $0.memberId == memberId }
-               .sorted { $0.earnedAt > $1.earnedAt }
+        activeRecords.filter { $0.memberId == memberId }
+                     .sorted { $0.earnedAt > $1.earnedAt }
+    }
+
+    /// 順位ベースの称号（友達の総人数で均等割り）
+    func title(rank: Int, outOf total: Int) -> PointTitle {
+        PointTitle(rank: rank, outOf: total)
     }
 
     // MARK: - 追加
