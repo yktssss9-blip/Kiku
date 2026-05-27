@@ -1,70 +1,73 @@
 import SwiftUI
 
 struct MemberListView: View {
-    @EnvironmentObject private var friendStore: FriendStore
-    @EnvironmentObject private var pointStore:  PointStore
+    @EnvironmentObject private var friendStore:  FriendStore
+    @EnvironmentObject private var pointStore:   PointStore
+    @EnvironmentObject private var profileStore: ProfileStore
     @State private var isShowingAddSheet = false
 
-    /// ポイント降順でソートした友達一覧
-    private var rankedFriends: [(rank: Int, friend: Friend, total: Int)] {
-        let sorted = friendStore.friends
+    /// 自分 + 友達をポイント降順でランク付け
+    private var rankedEntries: [(rank: Int, friend: Friend, total: Int, isMe: Bool)] {
+        let me = Friend(id: profileStore.myId, name: profileStore.name, emoji: profileStore.emoji)
+        let all = [me] + friendStore.friends
+
+        let sorted = all
             .map { ($0, pointStore.total(for: $0.id)) }
             .sorted { $0.1 > $1.1 }
 
-        var result: [(rank: Int, friend: Friend, total: Int)] = []
+        var result: [(rank: Int, friend: Friend, total: Int, isMe: Bool)] = []
         var currentRank = 1
         for (i, item) in sorted.enumerated() {
             if i > 0 && item.1 < sorted[i - 1].1 { currentRank = i + 1 }
-            result.append((rank: currentRank, friend: item.0, total: item.1))
+            result.append((rank: currentRank, friend: item.0, total: item.1,
+                           isMe: item.0.id == profileStore.myId))
         }
         return result
     }
 
     var body: some View {
         NavigationStack {
-            Group {
-                if friendStore.friends.isEmpty {
-                    emptyState
-                } else {
-                    friendList
-                }
-            }
-            .navigationTitle("友達")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { isShowingAddSheet = true } label: {
-                        Image(systemName: "plus")
+            rankingList
+                .navigationTitle("ランキング")
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button { isShowingAddSheet = true } label: {
+                            Image(systemName: "plus")
+                        }
                     }
                 }
-            }
-            .sheet(isPresented: $isShowingAddSheet) {
-                MemberAddView { newFriend in
-                    friendStore.add(newFriend)
+                .sheet(isPresented: $isShowingAddSheet) {
+                    MemberAddView { newFriend in
+                        friendStore.add(newFriend)
+                    }
                 }
-            }
         }
     }
 
     // MARK: - ランキング表
 
-    private var friendList: some View {
+    private var rankingList: some View {
         List {
-            // ── ランキングヘッダー ──
             Section {
                 rankingHeader
             }
-
-            // ── ランキング行 ──
             Section {
-                ForEach(rankedFriends, id: \.friend.id) { item in
-                    RankingRow(rank: item.rank, friend: item.friend, total: item.total,
-                               history: pointStore.history(for: item.friend.id),
-                               title:   pointStore.title(rank: item.rank,
-                                                        outOf: rankedFriends.count))
+                ForEach(rankedEntries, id: \.friend.id) { item in
+                    RankingRow(rank:         item.rank,
+                               friend:       item.friend,
+                               total:        item.total,
+                               history:      pointStore.history(for: item.friend.id),
+                               title:        pointStore.title(rank: item.rank,
+                                                              outOf: rankedEntries.count),
+                               isMe:         item.isMe,
+                               profileImage: item.isMe ? profileStore.profileImage : nil)
                 }
                 .onDelete { indexSet in
-                    // 元の friendStore インデックスに変換して削除
-                    let ids = indexSet.map { rankedFriends[$0].friend.id }
+                    // 自分の行は削除対象から除外
+                    let ids = indexSet.compactMap { i -> UUID? in
+                        let entry = rankedEntries[i]
+                        return entry.isMe ? nil : entry.friend.id
+                    }
                     friendStore.friends.removeAll { ids.contains($0.id) }
                 }
             }
@@ -84,33 +87,18 @@ struct MemberListView: View {
         .foregroundStyle(.secondary)
         .padding(.vertical, 2)
     }
-
-    // MARK: - 空状態
-
-    private var emptyState: some View {
-        VStack(spacing: 12) {
-            Spacer()
-            Image(systemName: "person.badge.plus")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
-            Text("友達がいません")
-                .font(.headline)
-            Text("＋ボタンから追加してください")
-                .font(.body)
-                .foregroundStyle(.secondary)
-            Spacer()
-        }
-    }
 }
 
 // MARK: - ランキング行
 
 private struct RankingRow: View {
-    let rank:    Int
-    let friend:  Friend
-    let total:   Int
-    let history: [PointRecord]
-    let title:   PointTitle
+    let rank:         Int
+    let friend:       Friend
+    let total:        Int
+    let history:      [PointRecord]
+    let title:        PointTitle
+    var isMe:         Bool   = false
+    var profileImage: Image? = nil
 
     @State private var isExpanded = false
 
@@ -125,11 +113,34 @@ private struct RankingRow: View {
                     rankBadge
                         .frame(width: 44, alignment: .center)
 
-                    // 絵文字 + 名前 + 称号
+                    // アイコン + 名前 + 称号
                     HStack(spacing: 8) {
-                        Text(friend.emoji).font(.title3)
+                        Group {
+                            if let image = profileImage {
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                            } else {
+                                Text(friend.emoji)
+                                    .font(.title3)
+                            }
+                        }
+                        .frame(width: 34, height: 34)
+                        .background(Color(UIColor.secondarySystemBackground))
+                        .clipShape(Circle())
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(friend.name).font(.body)
+                            HStack(spacing: 4) {
+                                Text(friend.name).font(.body)
+                                if isMe {
+                                    Text("あなた")
+                                        .font(.caption2)
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 6).padding(.vertical, 2)
+                                        .background(Color.blue)
+                                        .clipShape(Capsule())
+                                }
+                            }
                             Text(title.display)
                                 .font(.caption2)
                                 .foregroundStyle(titleColor(title))
@@ -247,4 +258,5 @@ private struct RankingRow: View {
     MemberListView()
         .environmentObject(FriendStore())
         .environmentObject(PointStore())
+        .environmentObject(ProfileStore())
 }

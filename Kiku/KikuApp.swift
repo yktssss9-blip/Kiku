@@ -133,11 +133,14 @@ struct KikuApp: App {
     private func setupChatUnlock() {
         questionStore.onAnswered = { questionId, memberId, questionText, answerValue in
             DispatchQueue.main.async {
+                let friend = self.friendStore.friend(for: memberId)
                 chatStore.unlock(
                     questionId:   questionId,
                     memberId:     memberId,
                     questionText: questionText,
-                    answerValue:  answerValue
+                    answerValue:  answerValue,
+                    friendName:   friend?.name  ?? "メンバー",
+                    friendEmoji:  friend?.emoji ?? "👤"
                 )
                 Task {
                     await ActivityManager.shared.end(questionId: questionId, memberId: memberId)

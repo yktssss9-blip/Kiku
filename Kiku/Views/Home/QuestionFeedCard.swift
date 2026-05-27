@@ -7,6 +7,7 @@ struct QuestionFeedCard: View {
     @EnvironmentObject var questionStore: QuestionStore
     @EnvironmentObject var groupStore: GroupStore
     @EnvironmentObject var profileStore: ProfileStore
+    @EnvironmentObject var chatStore: ChatStore
 
     @State private var showReminderAlert = false
     @State private var reminderCount = 0
@@ -20,8 +21,12 @@ struct QuestionFeedCard: View {
         currentQuestion.summary()
     }
 
-    // QuestionDetailView の遷移先グループ。
-    // broadcast や group が見つからない場合は answers から仮グループを生成
+    // この質問に紐づくチャットセッション
+    private var chatSession: ChatSession? {
+        chatStore.sessions.first { $0.questionId == currentQuestion.id }
+    }
+
+    // QuestionDetailView の遷移先グループ
     private var destinationGroup: KikuGroup {
         if let gid = currentQuestion.groupId,
            let found = groupStore.groups.first(where: { $0.id == gid }) {
@@ -34,68 +39,95 @@ struct QuestionFeedCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(spacing: 0) {
 
-            // ─── 上段：アバター / 質問文 / タップボタン ───
-            HStack(alignment: .top, spacing: 10) {
+            // ─── メインコンテンツ行 ───
+            HStack(spacing: 12) {
 
+                // 左: プロフィールアバター（色付き丸）
                 profileAvatarView
 
+                // 中央: 質問文 + 集計ピル
                 VStack(alignment: .leading, spacing: 6) {
+                    Text(currentQuestion.text)
+                        .font(.body)
+                        .fontWeight(.semibold)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                    HStack(alignment: .top) {
-                        Text(currentQuestion.text)
-                            .font(.body)
-                            .fontWeight(.semibold)
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        Spacer()
-
-                        NavigationLink(
-                            destination: QuestionDetailView(
-                                question: currentQuestion,
-                                group: destinationGroup
-                            )
-                        ) {
-                            HStack(spacing: 2) {
-                                Text("タップ")
-                                    .font(.caption)
-                                    .fontWeight(.semibold)
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2)
-                            }
-                            .foregroundStyle(.blue)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.blue.opacity(0.1))
-                            .clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    // ─── 集計行：各回答を独立したチップで表示 ───
                     HStack(spacing: 6) {
-                        summaryChip(icon: "○", count: summary.yes,     color: .green)
-                        summaryChip(icon: "✕", count: summary.no,      color: .red)
-                        summaryChip(icon: "💬", count: summary.pending, color: .orange, suffix: "未回答")
+                        statPill(icon: "○", count: summary.yes, color: .green)
+                        statPill(icon: "✕", count: summary.no,  color: .red)
+                        if summary.pending > 0 {
+                            statPill(icon: "💬", count: summary.pending, color: .orange, suffix: "未回答")
+                        }
                     }
                 }
+
+                Spacer()
+
+                // 右: 詳細への chevron
+                NavigationLink(
+                    destination: QuestionDetailView(
+                        question: currentQuestion,
+                        group: destinationGroup
+                    )
+                ) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.secondary.opacity(0.5))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
+
+            // ─── リマインドボタン（未回答がいるときのみ）───
+            if summary.pending > 0 {
+                Divider()
+                    .padding(.horizontal, 14)
+
+                Button(action: sendReminders) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "bell.badge.fill")
+                            .font(.caption)
+                        Text("未回答にリマインダーを送る")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                    }
+                    .foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                }
+                .buttonStyle(.plain)
             }
 
-            // ─── リマインダー行（未回答者がいるときのみ表示）───
-            if summary.pending > 0 {
-                Button(action: sendReminders) {
-                    Label("未回答にリマインダーを送る", systemImage: "bell.badge.fill")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
+            // ─── チャットボタン（セッションがあるときのみ）───
+            if let session = chatSession {
+                Divider()
+                    .padding(.horizontal, 14)
+
+                NavigationLink(destination: ChatView(session: session)) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "bubble.left.and.bubble.right.fill")
+                            .font(.caption)
+                        Text("チャットを見る")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Color.blue.opacity(0.5))
+                    }
+                    .foregroundStyle(.blue)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(12)
         .background(Color(UIColor.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
         .alert("リマインドを送りました", isPresented: $showReminderAlert) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -107,22 +139,26 @@ struct QuestionFeedCard: View {
 
     @ViewBuilder
     private var profileAvatarView: some View {
-        if let photo = profileStore.profileImage {
-            photo
-                .resizable()
-                .scaledToFill()
-                .frame(width: 38, height: 38)
-                .clipShape(Circle())
-        } else {
-            Text(profileStore.emoji)
-                .font(.system(size: 22))
-                .frame(width: 38, height: 38)
-                .background(Color(UIColor.tertiarySystemBackground))
-                .clipShape(Circle())
+        ZStack {
+            Circle()
+                .fill(Color.blue.opacity(0.1))
+                .frame(width: 44, height: 44)
+
+            if let photo = profileStore.profileImage {
+                photo
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 44, height: 44)
+                    .clipShape(Circle())
+            } else {
+                Text(profileStore.emoji)
+                    .font(.system(size: 24))
+            }
         }
     }
 
-    private func summaryChip(
+    @ViewBuilder
+    private func statPill(
         icon: String,
         count: Int,
         color: Color,
@@ -130,22 +166,16 @@ struct QuestionFeedCard: View {
     ) -> some View {
         HStack(spacing: 3) {
             Text(icon)
-                .foregroundStyle(count == 0 ? .secondary : color)
-            Text(suffix.isEmpty ? "\(count)人" : "\(count)人 \(suffix)")
-                .foregroundStyle(count == 0 ? .secondary : color)
+                .font(.caption2)
+            Text(suffix.isEmpty ? "\(count)" : "\(count)\(suffix)")
+                .font(.caption2)
+                .fontWeight(.semibold)
         }
-        .font(.caption)
-        .fontWeight(.medium)
+        .foregroundStyle(count == 0 ? Color.secondary : color)
         .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(count == 0 ? Color.secondary.opacity(0.08) : color.opacity(0.10))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(count == 0 ? Color.secondary.opacity(0.25) : color.opacity(0.35), lineWidth: 1)
-        )
+        .padding(.vertical, 3)
+        .background((count == 0 ? Color.secondary : color).opacity(0.1))
+        .clipShape(Capsule())
     }
 
     // MARK: - Actions

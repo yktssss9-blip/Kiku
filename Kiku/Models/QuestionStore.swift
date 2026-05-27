@@ -1,5 +1,18 @@
 import SwiftUI
 
+// MARK: - ヘルパー
+
+/// "HH:mm" 形式の時刻値かどうかを判定する
+func isTimeValue(_ value: String) -> Bool {
+    let parts = value.split(separator: ":", omittingEmptySubsequences: false)
+    guard parts.count == 2,
+          parts[0].count <= 2, parts[1].count == 2,
+          let h = Int(parts[0]), let m = Int(parts[1]),
+          (0...23).contains(h), (0...59).contains(m)
+    else { return false }
+    return true
+}
+
 struct Answer: Codable {
     var memberId: UUID
     var value: String       // "yes" / "no" / "pending"
@@ -42,9 +55,18 @@ struct Question: Identifiable, Codable {
     }
 
     func summary() -> (yes: Int, no: Int, pending: Int) {
-        let yes     = answers.filter { $0.value == "yes" }.count
-        let no      = answers.filter { $0.value == "no"  }.count
-        let pending = answers.filter { $0.value == "pending" }.count
+        var yes = 0, no = 0, pending = 0
+        for a in answers {
+            let v = a.value
+            if v == "pending" {
+                pending += 1
+            } else if answerIsNo(v) {
+                no += 1
+            } else {
+                // answerIsYes(v)（"yes" / "yes:text" / 時刻値）および未知値 → 後方互換でyesに加算
+                yes += 1
+            }
+        }
         return (yes, no, pending)
     }
 }
@@ -69,6 +91,7 @@ class QuestionStore: ObservableObject {
         let question = Question(text: text, groupId: group.id, answers: answers,
                                 choices: choices.map(\.rawValue))
         questions.append(question)
+        NotificationManager.playOutgoingSound()
 
         for memberId in group.memberIds {
             let friend = friends.first { $0.id == memberId }
@@ -89,6 +112,7 @@ class QuestionStore: ObservableObject {
         let question = Question(text: text, groupId: nil, isBroadcast: true, answers: answers,
                                 choices: choices.map(\.rawValue))
         questions.append(question)
+        NotificationManager.playOutgoingSound()
 
         for friend in friends {
             NotificationManager.shared.scheduleQuestion(
@@ -161,6 +185,10 @@ class QuestionStore: ObservableObject {
                 onAnswered?(qid, mid, q.text, value)
             }
         }
+    }
+
+    func delete(questionId: UUID) {
+        questions.removeAll { $0.id == questionId }
     }
 
     func questions(for group: KikuGroup) -> [Question] {

@@ -1,5 +1,6 @@
 import UserNotifications
 import Foundation
+import AudioToolbox
 
 class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     static let shared = NotificationManager()
@@ -13,6 +14,13 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     override init() {
         super.init()
         UNUserNotificationCenter.current().delegate = self
+    }
+
+    // MARK: - 送信音
+
+    /// 質問を送信したタイミングで一度だけ鳴らす効果音（iMessage 送信音）
+    static func playOutgoingSound() {
+        AudioServicesPlaySystemSound(1002)
     }
 
     // MARK: - 動的カテゴリ登録

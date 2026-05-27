@@ -87,11 +87,11 @@ struct QuestionDetailView: View {
     // MARK: - Subviews
 
     private var summaryCard: some View {
-        let s = question.summary()
+        let s = currentQuestion.summary()
         return HStack(spacing: 0) {
-            summaryItem(label: "はい",   count: s.yes,     color: .green)
+            summaryItem(label: "○",   count: s.yes,     color: .green)
             Divider()
-            summaryItem(label: "いいえ", count: s.no,      color: .secondary)
+            summaryItem(label: "✕", count: s.no,      color: .red)
             Divider()
             summaryItem(label: "未回答", count: s.pending, color: .orange)
         }
@@ -144,34 +144,35 @@ struct QuestionDetailView: View {
     }
 
     private func badge(for value: String) -> some View {
-        switch value {
-        case "yes":
-            return AnyView(
-                Text("✅ はい")
-                    .font(.caption).fontWeight(.semibold)
-                    .padding(.horizontal, 10).padding(.vertical, 4)
-                    .background(Color.green.opacity(0.15))
-                    .foregroundStyle(.green)
-                    .clipShape(Capsule())
-            )
-        case "no":
-            return AnyView(
-                Text("❌ いいえ")
-                    .font(.caption).fontWeight(.semibold)
-                    .padding(.horizontal, 10).padding(.vertical, 4)
-                    .background(Color(UIColor.secondarySystemBackground))
-                    .foregroundStyle(.secondary)
-                    .clipShape(Capsule())
-            )
-        default:
-            return AnyView(
-                Text("⏳ 未回答")
-                    .font(.caption).fontWeight(.semibold)
-                    .padding(.horizontal, 10).padding(.vertical, 4)
-                    .background(Color.orange.opacity(0.15))
-                    .foregroundStyle(.orange)
-                    .clipShape(Capsule())
-            )
+        if value == "pending" {
+            return badgePill("⏳ 未回答", bg: Color.orange.opacity(0.15), fg: .orange)
+        } else if value == "yes" {
+            return badgePill("○ はい", bg: Color.green.opacity(0.12), fg: .green)
+        } else if value == "no" {
+            return badgePill("✕ いいえ", bg: Color.red.opacity(0.10), fg: .red)
+        } else if isTimeValue(value) {
+            return badgePill("🕐 \(value)", bg: Color.blue.opacity(0.12), fg: .blue)
+        } else if value.hasPrefix("yes:") {
+            let text = String(value.dropFirst(4))
+            return badgePill("○ \(text)", bg: Color.green.opacity(0.10), fg: .green)
+        } else if value.hasPrefix("no:") {
+            let text = String(value.dropFirst(3))
+            return badgePill("✕ \(text)", bg: Color.red.opacity(0.08), fg: .red)
+        } else {
+            // レガシーな自由記述値
+            return badgePill("💬 \(value)", bg: Color.purple.opacity(0.12), fg: .purple)
         }
+    }
+
+    private func badgePill(_ label: String, bg: Color, fg: Color) -> AnyView {
+        AnyView(
+            Text(label)
+                .font(.caption).fontWeight(.semibold)
+                .lineLimit(1)
+                .padding(.horizontal, 10).padding(.vertical, 4)
+                .background(bg)
+                .foregroundStyle(fg)
+                .clipShape(Capsule())
+        )
     }
 }

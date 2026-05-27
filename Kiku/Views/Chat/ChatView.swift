@@ -2,43 +2,58 @@ import SwiftUI
 
 struct ChatView: View {
     let session: ChatSession
-    let friend: Friend?
 
     @EnvironmentObject private var chatStore: ChatStore
     @EnvironmentObject private var profileStore: ProfileStore
+
+    @State private var answerFilter: AnswerFilter = .all
     @State private var inputText = ""
     @FocusState private var isFocused: Bool
 
-    var messages: [ChatMessage] {
-        chatStore.sessions.first { $0.id == session.id }?.messages ?? []
+    enum AnswerFilter: String, CaseIterable {
+        case all   = "全員"
+        case yes   = "はい"
+        case no    = "いいえ"
+    }
+
+    // 表示するセッション（最新状態を参照）
+    private var currentSession: ChatSession? {
+        chatStore.sessions.first { $0.id == session.id }
+    }
+
+    // フィルタ適用済みメッセージ
+    private var filteredMessages: [ChatMessage] {
+        guard let s = currentSession else { return [] }
+        switch answerFilter {
+        case .all:
+            return s.messages
+        case .yes:
+            return s.messages.filter { $0.isFromMe || answerIsYes($0.answerValue) }
+        case .no:
+            return s.messages.filter { $0.isFromMe || answerIsNo($0.answerValue) }
+        }
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            // 開放のきっかけ
-            unlockBanner
-                .padding(.horizontal)
-                .padding(.top, 8)
+            // はい/いいえ フィルタタブ
+            filterTab
+
+            Divider()
 
             // メッセージ一覧
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 8) {
-                        ForEach(messages) { message in
-                            MessageBubble(
-                                message:    message,
-                                myEmoji:    profileStore.emoji,
-                                myName:     profileStore.name,
-                                theirEmoji: friend?.emoji ?? "👤",
-                                theirName:  friend?.name  ?? "メンバー"
-                            )
+                    LazyVStack(spacing: 12) {
+                        ForEach(filteredMessages) { message in
+                            MessageBubble(message: message, myEmoji: profileStore.emoji)
                         }
                         Color.clear.frame(height: 1).id("bottom")
                     }
-                    .padding(.horizontal)
-                    .padding(.top, 8)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
                 }
-                .onChange(of: messages.count) { _ in
+                .onChange(of: filteredMessages.count) { _ in
                     withAnimation { proxy.scrollTo("bottom") }
                 }
                 .onAppear {
@@ -51,36 +66,52 @@ struct ChatView: View {
             // 入力欄
             inputBar
         }
-        .navigationTitle(friend?.name ?? "チャット")
+        .navigationTitle(session.questionText)
         .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private var unlockBanner: some View {
-        let currentSession = chatStore.sessions.first { $0.id == session.id }
-        let answerEmoji: String = {
-            switch currentSession?.answerValue {
-            case "yes": return "✅ はい"
-            case "no":  return "❌ いいえ"
-            default:    return ""
-            }
-        }()
-        let bannerText: String = answerEmoji.isEmpty
-            ? "「\(session.questionText)」への回答でチャットが開放されました"
-            : "「\(session.questionText)」に \(answerEmoji) と回答してチャットが開放されました"
-
-        return HStack(spacing: 6) {
-            Image(systemName: "lock.open.fill")
-                .font(.caption)
-                .foregroundStyle(.green)
-            Text(bannerText)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        .onAppear {
+            chatStore.markAsRead(sessionId: session.id)
         }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 12)
-        .background(Color.green.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
+
+    // MARK: - フィルタタブ
+
+    private var filterTab: some View {
+        HStack(spacing: 0) {
+            ForEach(AnswerFilter.allCases, id: \.self) { filter in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        answerFilter = filter
+                    }
+                } label: {
+                    VStack(spacing: 4) {
+                        Text(filterLabel(filter))
+                            .font(.subheadline)
+                            .fontWeight(answerFilter == filter ? .semibold : .regular)
+                            .foregroundStyle(answerFilter == filter ? .primary : .secondary)
+                        Rectangle()
+                            .fill(answerFilter == filter ? Color.blue : Color.clear)
+                            .frame(height: 2)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    private func filterLabel(_ filter: AnswerFilter) -> String {
+        guard let s = currentSession else { return filter.rawValue }
+        switch filter {
+        case .all:
+            return "全員 \(s.memberAnswers.count)"
+        case .yes:
+            return "✅ はい \(s.yesMembers.count)"
+        case .no:
+            return "❌ いいえ \(s.noMembers.count)"
+        }
+    }
+
+    // MARK: - 入力バー
 
     private var inputBar: some View {
         HStack(spacing: 10) {
@@ -98,8 +129,10 @@ struct ChatView: View {
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 32))
-                    .foregroundStyle(inputText.trimmingCharacters(in: .whitespaces).isEmpty
-                                     ? Color.secondary : Color.blue)
+                    .foregroundStyle(
+                        inputText.trimmingCharacters(in: .whitespaces).isEmpty
+                        ? Color.secondary : Color.blue
+                    )
             }
             .disabled(inputText.trimmingCharacters(in: .whitespaces).isEmpty)
         }
@@ -111,7 +144,13 @@ struct ChatView: View {
     private func sendMessage() {
         let trimmed = inputText.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
-        chatStore.send(text: trimmed, isFromMe: true, to: session.id)
+        chatStore.send(
+            text:        trimmed,
+            isFromMe:    true,
+            senderName:  profileStore.name,
+            senderEmoji: profileStore.emoji,
+            to:          session.id
+        )
         inputText = ""
     }
 }
@@ -121,47 +160,67 @@ struct ChatView: View {
 struct MessageBubble: View {
     let message: ChatMessage
     let myEmoji: String
-    let myName: String
-    let theirEmoji: String
-    let theirName: String
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            if message.isFromMe {
-                Spacer(minLength: 60)
-                timeLabel
-                bubble
-                    .background(Color.blue)
-                    .foregroundStyle(.white)
-                avatar(emoji: myEmoji)
-            } else {
-                avatar(emoji: theirEmoji)
-                bubble
-                    .background(Color(UIColor.secondarySystemBackground))
-                    .foregroundStyle(.primary)
-                timeLabel
-                Spacer(minLength: 60)
-            }
+        if message.isFromMe {
+            myBubble
+        } else {
+            theirBubble
         }
     }
 
-    private var bubble: some View {
-        Text(message.text)
-            .font(.body)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .clipShape(RoundedRectangle(cornerRadius: 18))
+    // 自分のメッセージ（右寄せ）
+    private var myBubble: some View {
+        HStack(alignment: .bottom, spacing: 6) {
+            Spacer(minLength: 60)
+            timeLabel
+            Text(message.text)
+                .font(.body)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color.blue)
+                .foregroundStyle(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+            Text(myEmoji)
+                .font(.title3)
+                .frame(width: 32, height: 32)
+        }
+    }
+
+    // 相手のメッセージ（左寄せ）
+    private var theirBubble: some View {
+        HStack(alignment: .top, spacing: 8) {
+            // アバター
+            Text(message.senderEmoji.isEmpty ? "👤" : message.senderEmoji)
+                .font(.title3)
+                .frame(width: 32, height: 32)
+                .background(Color(UIColor.secondarySystemBackground))
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                // 送信者名
+                Text(message.senderName.isEmpty ? "メンバー" : message.senderName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack(alignment: .bottom, spacing: 6) {
+                    Text(message.text)
+                        .font(.body)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(Color(UIColor.secondarySystemBackground))
+                        .foregroundStyle(.primary)
+                        .clipShape(RoundedRectangle(cornerRadius: 18))
+                    timeLabel
+                    Spacer(minLength: 60)
+                }
+            }
+        }
     }
 
     private var timeLabel: some View {
         Text(message.sentAt.formatted(.dateTime.hour().minute()))
             .font(.caption2)
             .foregroundStyle(.secondary)
-    }
-
-    private func avatar(emoji: String) -> some View {
-        Text(emoji)
-            .font(.title3)
-            .frame(width: 32, height: 32)
     }
 }

@@ -53,6 +53,13 @@ class PointStore: ObservableObject {
         records.append(record)
     }
 
+    // MARK: - リセット
+
+    func reset() {
+        records = []
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+
     // MARK: - 永続化
 
     private func save() {

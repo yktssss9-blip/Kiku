@@ -28,11 +28,19 @@ struct QuestionComposerView: View {
 
             // ① 質問入力行
             HStack(alignment: .center, spacing: 12) {
-                Text(profileStore.emoji)
-                    .font(.system(size: 28))
-                    .frame(width: 42, height: 42)
-                    .background(Color(UIColor.secondarySystemBackground))
-                    .clipShape(Circle())
+                Group {
+                    if let image = profileStore.profileImage {
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        Text(profileStore.emoji)
+                            .font(.system(size: 28))
+                    }
+                }
+                .frame(width: 42, height: 42)
+                .background(Color(UIColor.secondarySystemBackground))
+                .clipShape(Circle())
 
                 TextField("質問を送ろう…", text: $questionText, axis: .vertical)
                     .font(.body)
@@ -129,7 +137,8 @@ struct QuestionComposerView: View {
                     HStack(spacing: 8) {
 
                         // ＋ ボタン（一番左・全種類追加済みなら非表示）
-                        if choices.count < AnswerChoice.allCases.count {
+                        let availableChoices = AnswerChoice.allCases.filter { $0 != .freeText }
+                        if choices.count < availableChoices.count {
                             Button {
                                 isShowingChoiceMenu = true
                             } label: {
@@ -178,7 +187,7 @@ struct QuestionComposerView: View {
                 .padding(.trailing, 12)
             }
             .confirmationDialog("選択肢を追加", isPresented: $isShowingChoiceMenu, titleVisibility: .visible) {
-                ForEach(AnswerChoice.allCases.filter { c in !choices.contains { $0.id == c.id } }) { choice in
+                ForEach(AnswerChoice.allCases.filter { c in c != .freeText && !choices.contains { $0.id == c.id } }) { choice in
                     Button(choice.menuLabel) {
                         choices.append(choice)
                     }
@@ -186,9 +195,13 @@ struct QuestionComposerView: View {
                 Button("キャンセル", role: .cancel) {}
             }
         }
-        .background(Color(UIColor.systemBackground))
+        .background(Color(UIColor.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
-        .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 2)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.black.opacity(0.08), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.18), radius: 12, x: 0, y: 4)
         .sheet(isPresented: $isShowingPicker) {
             DestinationPickerSheet(
                 selectedFriends: $selectedFriends,
@@ -247,6 +260,8 @@ private struct DestinationPickerSheet: View {
     @EnvironmentObject private var groupStore:  GroupStore
     @Environment(\.dismiss) private var dismiss
 
+    @State private var isShowingGroupCreate = false
+
     var body: some View {
         NavigationStack {
             List {
@@ -281,32 +296,48 @@ private struct DestinationPickerSheet: View {
                 }
 
                 // ─── グループセクション ───
-                if !groupStore.groups.isEmpty {
-                    Section("グループ") {
-                        ForEach(groupStore.groups.sorted(by: { $0.createdAt > $1.createdAt })) { group in
-                            let isSelected = selectedGroup?.id == group.id
-                            Button {
-                                selectedGroup   = isSelected ? nil : group
-                                selectedFriends = []   // 友達選択をクリア
-                            } label: {
-                                HStack(spacing: 12) {
-                                    Text("👥").font(.title2)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(group.name).font(.headline).foregroundStyle(.primary)
-                                        Text("\(group.memberIds.count)人").font(.caption).foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                    if isSelected {
-                                        Image(systemName: "checkmark")
-                                            .foregroundStyle(.blue)
-                                            .fontWeight(.semibold)
-                                    }
+                Section {
+                    // グループ一覧
+                    ForEach(groupStore.groups.sorted(by: { $0.createdAt > $1.createdAt })) { group in
+                        let isSelected = selectedGroup?.id == group.id
+                        Button {
+                            selectedGroup   = isSelected ? nil : group
+                            selectedFriends = []   // 友達選択をクリア
+                        } label: {
+                            HStack(spacing: 12) {
+                                Text("👥").font(.title2)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(group.name).font(.headline).foregroundStyle(.primary)
+                                    Text("\(group.memberIds.count)人").font(.caption).foregroundStyle(.secondary)
                                 }
-                                .contentShape(Rectangle())
+                                Spacer()
+                                if isSelected {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(.blue)
+                                        .fontWeight(.semibold)
+                                }
                             }
-                            .buttonStyle(.plain)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    // 新規作成ボタン
+                    Button {
+                        isShowingGroupCreate = true
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.title2)
+                                .foregroundStyle(.blue)
+                            Text("新しいグループを作成")
+                                .font(.body)
+                                .foregroundStyle(.blue)
                         }
                     }
+                    .buttonStyle(.plain)
+                } header: {
+                    Text("グループ")
                 }
 
                 // ─── 空状態 ───
@@ -325,6 +356,9 @@ private struct DestinationPickerSheet: View {
                     Button("完了") { dismiss() }
                         .fontWeight(.semibold)
                 }
+            }
+            .sheet(isPresented: $isShowingGroupCreate) {
+                GroupCreateView()
             }
         }
     }

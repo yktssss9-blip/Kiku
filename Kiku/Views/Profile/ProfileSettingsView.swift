@@ -9,41 +9,63 @@ private let emojiOptions: [String] = [
     "🦊", "🐻", "🐸", "🐨", "🦁", "🐯"
 ]
 
+private enum IconType: String, CaseIterable {
+    case emoji = "絵文字"
+    case photo = "写真"
+
+    init(_ mode: IconMode) {
+        self = mode == .photo ? .photo : .emoji
+    }
+
+    var iconMode: IconMode {
+        self == .photo ? .photo : .emoji
+    }
+}
+
 struct ProfileSettingsView: View {
-    @EnvironmentObject private var store:      ProfileStore
-    @EnvironmentObject private var pointStore: PointStore
+    @EnvironmentObject private var store: ProfileStore
     @Environment(\.dismiss) private var dismiss
 
-    @State private var name        = ""
-    @State private var selectedEmoji = "👤"
+    @State private var name              = ""
+    @State private var selectedEmoji     = "👤"
+    @State private var iconType          = IconType.emoji
     @State private var photoItem: PhotosPickerItem? = nil
-    @State private var selectedImage: UIImage? = nil
-    @State private var showDeletePhotoConfirm = false
-    @State private var showSavedToast = false
+    @State private var selectedImage: UIImage?      = nil
+    @State private var showDeletePhotoConfirm       = false
+    @State private var showSavedToast               = false
 
     var hasChanges: Bool {
         name != store.name
         || selectedEmoji != store.emoji
         || selectedImage != nil
+        || (iconType == .emoji && store.photoData != nil)
     }
 
     var body: some View {
         NavigationStack {
             Form {
-                // プロフィール画像
+                // アバター + アイコン種別セレクター
                 Section {
-                    HStack {
-                        Spacer()
-                        photoSection
-                        Spacer()
-                    }
-                    .padding(.vertical, 8)
-                }
+                    VStack(spacing: 16) {
+                        avatarView
+                            .frame(width: 100, height: 100)
 
-                // シゴできポイント集計
-                Section {
-                    pointsSummaryRow
+                        Picker("", selection: $iconType) {
+                            ForEach(IconType.allCases, id: \.self) { type in
+                                Text(type.rawValue).tag(type)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(maxWidth: 220)
+
+                        Text("どちらか一方のみ有効になります")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
                 }
+                .listRowBackground(Color.clear)
 
                 // 名前
                 Section("名前") {
@@ -51,34 +73,76 @@ struct ProfileSettingsView: View {
                         .autocorrectionDisabled()
                 }
 
-                // 絵文字（写真がない場合のアイコン）
-                Section("絵文字アイコン（写真がないときに使用）") {
-                    LazyVGrid(
-                        columns: Array(repeating: GridItem(.flexible()), count: 7),
-                        spacing: 10
-                    ) {
-                        ForEach(emojiOptions, id: \.self) { emoji in
-                            Button {
-                                selectedEmoji = emoji
-                            } label: {
-                                Text(emoji)
-                                    .font(.title3)
-                                    .frame(width: 40, height: 40)
-                                    .background(
-                                        selectedEmoji == emoji
-                                        ? Color.blue.opacity(0.15)
-                                        : Color(UIColor.secondarySystemBackground)
-                                    )
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .stroke(selectedEmoji == emoji ? Color.blue : Color.clear, lineWidth: 2)
-                                    )
+                // 絵文字モード
+                if iconType == .emoji {
+                    Section("絵文字アイコンを選ぶ") {
+                        LazyVGrid(
+                            columns: Array(repeating: GridItem(.flexible()), count: 7),
+                            spacing: 10
+                        ) {
+                            ForEach(emojiOptions, id: \.self) { emoji in
+                                Button {
+                                    selectedEmoji = emoji
+                                } label: {
+                                    Text(emoji)
+                                        .font(.title3)
+                                        .frame(width: 40, height: 40)
+                                        .background(
+                                            selectedEmoji == emoji
+                                            ? Color.blue.opacity(0.15)
+                                            : Color(UIColor.secondarySystemBackground)
+                                        )
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .stroke(selectedEmoji == emoji ? Color.blue : Color.clear, lineWidth: 2)
+                                        )
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
+                        .padding(.vertical, 4)
                     }
-                    .padding(.vertical, 4)
+                }
+
+                // 写真モード
+                if iconType == .photo {
+                    Section("プロフィール写真") {
+                        HStack {
+                            Spacer()
+                            VStack(spacing: 12) {
+                                PhotosPicker(selection: $photoItem, matching: .images) {
+                                    Label("写真を選ぶ", systemImage: "photo.on.rectangle")
+                                        .font(.subheadline)
+                                        .padding(.horizontal, 20)
+                                        .padding(.vertical, 10)
+                                        .background(Color.blue.opacity(0.1))
+                                        .foregroundStyle(.blue)
+                                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                                }
+
+                                if store.photoData != nil || selectedImage != nil {
+                                    Button(role: .destructive) {
+                                        showDeletePhotoConfirm = true
+                                    } label: {
+                                        Label("写真を削除", systemImage: "trash")
+                                            .font(.caption)
+                                    }
+                                    .confirmationDialog("写真を削除しますか？", isPresented: $showDeletePhotoConfirm) {
+                                        Button("削除する", role: .destructive) {
+                                            selectedImage = nil
+                                            store.photoData = nil
+                                            // 写真がなくなったら絵文字モードへ切り替え
+                                            iconType = .emoji
+                                        }
+                                        Button("キャンセル", role: .cancel) {}
+                                    }
+                                }
+                            }
+                            Spacer()
+                        }
+                        .padding(.vertical, 8)
+                    }
                 }
             }
             .navigationTitle("プロフィール編集")
@@ -98,6 +162,7 @@ struct ProfileSettingsView: View {
             .onAppear {
                 name          = store.name
                 selectedEmoji = store.emoji
+                iconType      = IconType(store.iconMode)
             }
             .onChange(of: photoItem) { newItem in
                 Task {
@@ -107,71 +172,53 @@ struct ProfileSettingsView: View {
                     }
                 }
             }
+            .onChange(of: iconType) { newType in
+                // 絵文字に切り替えたとき、選択中の新規写真をリセット
+                if newType == .emoji {
+                    selectedImage = nil
+                    photoItem     = nil
+                }
+            }
             .overlay(savedToast, alignment: .bottom)
         }
     }
 
-    // MARK: - Photo Section
-
-    private var photoSection: some View {
-        VStack(spacing: 12) {
-            // アバター表示
-            ZStack(alignment: .bottomTrailing) {
-                avatarView
-                    .frame(width: 100, height: 100)
-
-                // カメラアイコン（変更ボタン）
-                PhotosPicker(selection: $photoItem, matching: .images) {
-                    Image(systemName: "camera.circle.fill")
-                        .font(.system(size: 28))
-                        .foregroundStyle(.white)
-                        .background(Color.blue)
-                        .clipShape(Circle())
-                }
-                .offset(x: 4, y: 4)
-            }
-
-            // 写真削除ボタン
-            if store.photoData != nil || selectedImage != nil {
-                Button(role: .destructive) {
-                    showDeletePhotoConfirm = true
-                } label: {
-                    Label("写真を削除", systemImage: "trash")
-                        .font(.caption)
-                }
-                .confirmationDialog("写真を削除しますか？", isPresented: $showDeletePhotoConfirm) {
-                    Button("削除する", role: .destructive) {
-                        selectedImage = nil
-                        store.photoData = nil
-                    }
-                    Button("キャンセル", role: .cancel) {}
-                }
-            }
-        }
-    }
+    // MARK: - Avatar View
 
     private var avatarView: some View {
         Group {
-            if let img = selectedImage {
-                // 新しく選択した画像
-                Image(uiImage: img)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 100, height: 100)
-                    .clipShape(Circle())
-                    .overlay(Circle().stroke(Color(UIColor.systemBackground), lineWidth: 3))
-                    .shadow(radius: 4)
-            } else if let profileImage = store.profileImage {
-                // 既存の保存済み画像
-                profileImage
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 100, height: 100)
-                    .clipShape(Circle())
-                    .overlay(Circle().stroke(Color(UIColor.systemBackground), lineWidth: 3))
-                    .shadow(radius: 4)
+            if iconType == .photo {
+                if let img = selectedImage {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 100, height: 100)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color(UIColor.systemBackground), lineWidth: 3))
+                        .shadow(radius: 4)
+                } else if let profileImage = store.profileImage {
+                    profileImage
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 100, height: 100)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color(UIColor.systemBackground), lineWidth: 3))
+                        .shadow(radius: 4)
+                } else {
+                    // 写真モードだがまだ未選択
+                    ZStack {
+                        Circle()
+                            .fill(Color(UIColor.secondarySystemBackground))
+                            .frame(width: 100, height: 100)
+                            .overlay(Circle().stroke(Color(UIColor.systemBackground), lineWidth: 3))
+                            .shadow(radius: 4)
+                        Image(systemName: "camera")
+                            .font(.system(size: 30))
+                            .foregroundStyle(.secondary)
+                    }
+                }
             } else {
-                // 絵文字フォールバック
+                // 絵文字モード
                 Text(selectedEmoji)
                     .font(.system(size: 52))
                     .frame(width: 100, height: 100)
@@ -203,89 +250,26 @@ struct ProfileSettingsView: View {
         }
     }
 
-    // MARK: - Points Summary
-
-    private var totalPoints: Int {
-        // 全メンバーの直近7日間の合計
-        let cutoff = Date().addingTimeInterval(-7 * 24 * 60 * 60)
-        return pointStore.records
-            .filter { $0.earnedAt >= cutoff }
-            .reduce(0) { $0 + $1.points }
-    }
-
-    private var pointsSummaryRow: some View {
-        NavigationLink {
-            pointsHistoryView
-        } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("シゴできポイント（累計）")
-                        .font(.subheadline)
-                    Text("友達が獲得した合計ポイント")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                HStack(spacing: 4) {
-                    Text("🏆")
-                    Text("\(totalPoints)pt")
-                        .fontWeight(.bold)
-                        .foregroundStyle(totalPoints > 0 ? .primary : .secondary)
-                }
-                .font(.subheadline)
-            }
-        }
-    }
-
-    private var pointsHistoryView: some View {
-        List {
-            if pointStore.records.isEmpty {
-                ContentUnavailableView(
-                    "まだ記録がありません",
-                    systemImage: "trophy",
-                    description: Text("質問に回答すると\nポイントが記録されます")
-                )
-            } else {
-                let cutoff = Date().addingTimeInterval(-7 * 24 * 60 * 60)
-                ForEach(pointStore.records.filter { $0.earnedAt >= cutoff }.sorted { $0.earnedAt > $1.earnedAt }) { record in
-                    HStack {
-                        Text(record.tier.label)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .frame(width: 64, alignment: .leading)
-                        Text(record.questionText)
-                            .font(.body)
-                            .lineLimit(1)
-                        Spacer()
-                        Text("+\(record.points)pt")
-                            .fontWeight(.semibold)
-                            .foregroundStyle(historyTierColor(record.tier))
-                    }
-                    .padding(.vertical, 2)
-                }
-            }
-        }
-        .navigationTitle("ポイント履歴（直近7日間）")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private func historyTierColor(_ tier: PointTier) -> Color {
-        switch tier {
-        case .fast:   return .orange
-        case .normal: return .blue
-        case .late:   return .secondary
-        }
-    }
-
     // MARK: - Save
 
     private func saveChanges() {
-        store.name  = name.trimmingCharacters(in: .whitespaces)
-        store.emoji = selectedEmoji
+        store.name = name.trimmingCharacters(in: .whitespaces)
 
-        if let img = selectedImage,
-           let data = img.jpegData(compressionQuality: 0.7) {
-            store.photoData = data
+        switch iconType {
+        case .emoji:
+            // 絵文字を有効化 → 写真データを破棄して排他を保証
+            store.emoji     = selectedEmoji
+            store.photoData = nil
+            store.iconMode  = .emoji
+
+        case .photo:
+            // 写真を有効化 → 新規選択があれば保存、なければ既存を維持
+            if let img = selectedImage,
+               let data = img.jpegData(compressionQuality: 0.7) {
+                store.photoData = data
+            }
+            // 写真モードに切り替えたが写真がない場合は絵文字にフォールバック
+            store.iconMode = store.photoData != nil ? .photo : .emoji
         }
 
         withAnimation(.spring()) { showSavedToast = true }
@@ -299,5 +283,4 @@ struct ProfileSettingsView: View {
 #Preview {
     ProfileSettingsView()
         .environmentObject(ProfileStore())
-        .environmentObject(PointStore())
 }

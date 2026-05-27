@@ -3,6 +3,10 @@ import SwiftUI
 struct ChatListView: View {
     @EnvironmentObject private var chatStore: ChatStore
     @EnvironmentObject private var friendStore: FriendStore
+    @EnvironmentObject private var profileStore: ProfileStore
+
+    @State private var sessionToDelete: ChatSession? = nil
+    @State private var showDeleteAlert = false
 
     var body: some View {
         NavigationStack {
@@ -16,6 +20,8 @@ struct ChatListView: View {
             .navigationTitle("チャット")
         }
     }
+
+    // MARK: - Empty
 
     private var emptyState: some View {
         VStack(spacing: 12) {
@@ -34,43 +40,69 @@ struct ChatListView: View {
         }
     }
 
+    // MARK: - List
+
     private var sessionList: some View {
         List {
-            ForEach(chatStore.sessions.sorted { $0.unlockedAt > $1.unlockedAt }) { session in
-                let friend = friendStore.friend(for: session.memberId)
-                NavigationLink(destination: ChatView(session: session, friend: friend)) {
-                    sessionRow(session: session, friend: friend)
+            ForEach(chatStore.sessions.sorted { $0.lastMessageAt > $1.lastMessageAt }) { session in
+                NavigationLink(destination: ChatView(session: session)) {
+                    sessionRow(session: session)
+                }
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button(role: .destructive) {
+                        sessionToDelete = session
+                        showDeleteAlert = true
+                    } label: {
+                        Label("削除", systemImage: "trash")
+                    }
                 }
             }
         }
+        .listStyle(.plain)
+        .alert("チャットを削除しますか？", isPresented: $showDeleteAlert, presenting: sessionToDelete) { s in
+            Button("削除", role: .destructive) {
+                chatStore.deleteSession(id: s.id)
+                sessionToDelete = nil
+            }
+            Button("キャンセル", role: .cancel) {
+                sessionToDelete = nil
+            }
+        } message: { s in
+            Text("「\(s.questionText)」のチャット履歴をすべて削除します。この操作は元に戻せません。")
+        }
     }
 
-    private func sessionRow(session: ChatSession, friend: Friend?) -> some View {
+    private func sessionRow(session: ChatSession) -> some View {
         HStack(spacing: 12) {
-            Text(friend?.emoji ?? "👤")
-                .font(.title2)
-                .frame(width: 44, height: 44)
-                .background(Color(UIColor.secondarySystemBackground))
-                .clipShape(Circle())
+            // 質問送信者（自分）のアバター
+            creatorAvatar
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(friend?.name ?? "メンバー")
+            VStack(alignment: .leading, spacing: 4) {
+                Text(session.questionText)
                     .font(.headline)
+                    .lineLimit(1)
 
                 if let last = session.messages.last {
-                    Text(last.text)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        if !last.isFromMe {
+                            Text(last.senderName)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        Text(last.text)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 } else {
-                    Text("「\(session.questionText)」への回答で開放")
+                    Text("チャットが開放されました")
                         .font(.caption)
                         .foregroundStyle(.green)
-                        .lineLimit(1)
                 }
             }
 
-            Spacer()
+            Spacer(minLength: 0)
 
             if let last = session.messages.last {
                 Text(last.sentAt.formatted(.dateTime.hour().minute()))
@@ -78,7 +110,26 @@ struct ChatListView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
+    }
+
+    // 質問送信者（自分）のアバター
+    @ViewBuilder
+    private var creatorAvatar: some View {
+        if let data = profileStore.photoData,
+           let uiImage = UIImage(data: data) {
+            Image(uiImage: uiImage)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 44, height: 44)
+                .clipShape(Circle())
+        } else {
+            Text(profileStore.emoji.isEmpty ? "👤" : profileStore.emoji)
+                .font(.title2)
+                .frame(width: 44, height: 44)
+                .background(Color(UIColor.secondarySystemBackground))
+                .clipShape(Circle())
+        }
     }
 }
 
@@ -86,4 +137,5 @@ struct ChatListView: View {
     ChatListView()
         .environmentObject(ChatStore())
         .environmentObject(FriendStore())
+        .environmentObject(ProfileStore())
 }
