@@ -7,52 +7,59 @@ import ActivityKit
 struct KikuLiveActivityView: View {
     let context: ActivityViewContext<KikuActivityAttributes>
 
-    private var yesURL: URL {
-        URL(string: "kiku://answer?questionId=\(context.attributes.questionId)&memberId=\(context.attributes.memberId)&value=yes")!
-    }
-    private var noURL: URL {
-        URL(string: "kiku://answer?questionId=\(context.attributes.questionId)&memberId=\(context.attributes.memberId)&value=no")!
-    }
-
     var body: some View {
-        VStack(spacing: 10) {
-            // 宛先 + タイマー + ポイントヒント
-            HStack {
-                Label("\(context.attributes.memberName)さんへ質問が届きました",
-                      systemImage: "questionmark.circle.fill")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .labelStyle(.titleAndIcon)
+        VStack(spacing: 14) {
+
+            // ── ヘッダー: 宛先 / タイマー / ポイントヒント ──
+            HStack(alignment: .center) {
+                // 宛先
+                Label(context.attributes.memberName, systemImage: "person.circle.fill")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
                 Spacer()
+
+                // タイマー（中央寄り・大きく）
                 HStack(spacing: 4) {
-                    Text(context.attributes.sentAt, style: .timer)
-                        .font(.caption).monospacedDigit()
+                    Image(systemName: "clock")
+                        .font(.subheadline)
                         .foregroundStyle(timerColor)
-                    Text(pointLabel)
-                        .font(.caption2).foregroundStyle(timerColor)
+                    Text(context.attributes.sentAt, style: .timer)
+                        .font(.title3).fontWeight(.bold).monospacedDigit()
+                        .foregroundStyle(timerColor)
                 }
+
+                Spacer()
+
+                // ポイントヒント
+                Text(pointLabel)
+                    .font(.subheadline).fontWeight(.semibold)
+                    .foregroundStyle(timerColor)
             }
 
-            // 質問文（大きく）
+            // ── 質問文（大きく・中央） ──
             Text(context.attributes.questionText)
-                .font(.title3).fontWeight(.bold)
+                .font(.title2).fontWeight(.bold)
                 .multilineTextAlignment(.center)
-                .lineLimit(3)
+                .lineLimit(4)
                 .frame(maxWidth: .infinity)
+                .fixedSize(horizontal: false, vertical: true)
 
-            // はい/いいえ ボタン（AppIntents：アプリを開かずに完結）
-            HStack(spacing: 10) {
+            // ── はい / いいえ ボタン ──
+            HStack(spacing: 12) {
                 Button(intent: AnswerIntent(
                     questionId: context.attributes.questionId,
                     memberId:   context.attributes.memberId,
                     value:      "yes"
                 )) {
                     Label("はい", systemImage: "checkmark.circle.fill")
-                        .font(.subheadline).fontWeight(.bold)
+                        .font(.headline).fontWeight(.bold)
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 12)
                         .background(Color.green)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
                 .buttonStyle(.plain)
 
@@ -62,18 +69,18 @@ struct KikuLiveActivityView: View {
                     value:      "no"
                 )) {
                     Label("いいえ", systemImage: "xmark.circle.fill")
-                        .font(.subheadline).fontWeight(.bold)
+                        .font(.headline).fontWeight(.bold)
                         .foregroundStyle(.primary)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 12)
                         .background(Color(UIColor.systemGray4))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
     }
 
     private var timerColor: Color {
@@ -88,15 +95,6 @@ struct KikuLiveActivityView: View {
         if e < 60  { return "⚡️+20pt" }
         if e < 180 { return "🕐+10pt"  }
         return "+2pt"
-    }
-
-    private func miniCount(label: String, count: Int, color: Color) -> some View {
-        VStack(spacing: 1) {
-            Text("\(count)").font(.caption).fontWeight(.bold).foregroundStyle(color)
-            Text(label).font(.system(size: 9)).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 4)
     }
 }
 

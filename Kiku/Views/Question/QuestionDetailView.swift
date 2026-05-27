@@ -7,7 +7,6 @@ struct QuestionDetailView: View {
     @EnvironmentObject private var friendStore:   FriendStore
     @EnvironmentObject private var pointStore:    PointStore
 
-    @StateObject private var activityManager = ActivityManager.shared
     @State private var showReminderAlert = false
     @State private var reminderCount = 0
 
@@ -47,34 +46,6 @@ struct QuestionDetailView: View {
                 .disabled(pendingAnswers.isEmpty)
             }
 
-            Section("通知バーで回答") {
-                if pendingAnswers.isEmpty {
-                    Text("全員回答済みです").foregroundStyle(.secondary).font(.subheadline)
-                } else {
-                    ForEach(pendingAnswers, id: \.memberId) { answer in
-                        if let friend = friendStore.friend(for: answer.memberId) {
-                            Button {
-                                activityManager.start(question: currentQuestion,
-                                                      memberId: friend.id,
-                                                      memberName: friend.name)
-                            } label: {
-                                HStack {
-                                    Text(friend.emoji).font(.title3)
-                                    Text("\(friend.name) に送る")
-                                    Spacer()
-                                    Image(systemName: "bell.badge.fill").foregroundStyle(.blue)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-                if let error = activityManager.lastError {
-                    Label(error, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange).font(.caption)
-                }
-            }
-
             Section("メンバーの回答") {
                 ForEach(currentQuestion.answers, id: \.memberId) { answer in
                     answerRow(answer)
@@ -104,7 +75,8 @@ struct QuestionDetailView: View {
                 memberId:     target.friend.id,
                 memberName:   target.friend.name,
                 memberEmoji:  target.friend.emoji,
-                questionText: question.text
+                questionText: question.text,
+                choices:      currentQuestion.answerChoices
             )
         }
 

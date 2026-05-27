@@ -3,19 +3,19 @@ import SwiftUI
 struct ContentView: View {
     var body: some View {
         TabView {
-            GroupListView()
+            HomeView()
                 .tabItem {
-                    Label("グループ", systemImage: "person.3")
-                }
-
-            MemberListView()
-                .tabItem {
-                    Label("友達", systemImage: "person.badge.plus")
+                    Label("ホーム", systemImage: "house.fill")
                 }
 
             ChatListView()
                 .tabItem {
                     Label("チャット", systemImage: "bubble.left.and.bubble.right.fill")
+                }
+
+            MemberListView()
+                .tabItem {
+                    Label("ランキング", systemImage: "crown.fill")
                 }
 
             SettingsView()

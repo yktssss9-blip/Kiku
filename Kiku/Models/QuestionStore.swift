@@ -13,6 +13,33 @@ struct Question: Identifiable, Codable {
     var isBroadcast: Bool = false
     var answers: [Answer]
     var createdAt: Date = Date()
+    var choices: [String] = ["yes", "no"]  // AnswerChoice.rawValue で保存
+
+    // 既存データとの後方互換デコード
+    enum CodingKeys: String, CodingKey {
+        case id, text, groupId, isBroadcast, answers, createdAt, choices
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id          = try c.decode(UUID.self,     forKey: .id)
+        text        = try c.decode(String.self,   forKey: .text)
+        groupId     = try c.decodeIfPresent(UUID.self,   forKey: .groupId)
+        isBroadcast = try c.decodeIfPresent(Bool.self,   forKey: .isBroadcast) ?? false
+        answers     = try c.decode([Answer].self, forKey: .answers)
+        createdAt   = try c.decodeIfPresent(Date.self,   forKey: .createdAt) ?? Date()
+        choices     = try c.decodeIfPresent([String].self, forKey: .choices) ?? ["yes", "no"]
+    }
+    init(id: UUID = UUID(), text: String, groupId: UUID? = nil,
+         isBroadcast: Bool = false, answers: [Answer],
+         createdAt: Date = Date(), choices: [String] = ["yes", "no"]) {
+        self.id = id; self.text = text; self.groupId = groupId
+        self.isBroadcast = isBroadcast; self.answers = answers
+        self.createdAt = createdAt; self.choices = choices
+    }
+
+    var answerChoices: [AnswerChoice] {
+        choices.compactMap { AnswerChoice(rawValue: $0) }
+    }
 
     func summary() -> (yes: Int, no: Int, pending: Int) {
         let yes     = answers.filter { $0.value == "yes" }.count
@@ -37,28 +64,42 @@ class QuestionStore: ObservableObject {
     }
 
     // グループへの送信
-    func send(text: String, to group: KikuGroup, friends: [Friend] = []) {
-        let answers = group.memberIds.map { Answer(memberId: $0, value: "pending") }
-        let question = Question(text: text, groupId: group.id, answers: answers)
+    func send(text: String, to group: KikuGroup, friends: [Friend] = [], choices: [AnswerChoice] = [.yes, .no]) {
+        let answers  = group.memberIds.map { Answer(memberId: $0, value: "pending") }
+        let question = Question(text: text, groupId: group.id, answers: answers,
+                                choices: choices.map(\.rawValue))
         questions.append(question)
 
-        // 各メンバーにローカル通知を送信
         for memberId in group.memberIds {
             let friend = friends.first { $0.id == memberId }
             NotificationManager.shared.scheduleQuestion(
-                questionId:  question.id,
-                memberId:    memberId,
-                memberName:  friend?.name  ?? "メンバー",
-                memberEmoji: friend?.emoji ?? "👤",
-                questionText: text
+                questionId:   question.id,
+                memberId:     memberId,
+                memberName:   friend?.name  ?? "メンバー",
+                memberEmoji:  friend?.emoji ?? "👤",
+                questionText: text,
+                choices:      choices
             )
         }
     }
 
     // 全体送信（全友達へ）
-    func sendBroadcast(text: String, to friends: [Friend]) {
-        let answers = friends.map { Answer(memberId: $0.id, value: "pending") }
-        questions.append(Question(text: text, groupId: nil, isBroadcast: true, answers: answers))
+    func sendBroadcast(text: String, to friends: [Friend], choices: [AnswerChoice] = [.yes, .no]) {
+        let answers  = friends.map { Answer(memberId: $0.id, value: "pending") }
+        let question = Question(text: text, groupId: nil, isBroadcast: true, answers: answers,
+                                choices: choices.map(\.rawValue))
+        questions.append(question)
+
+        for friend in friends {
+            NotificationManager.shared.scheduleQuestion(
+                questionId:   question.id,
+                memberId:     friend.id,
+                memberName:   friend.name,
+                memberEmoji:  friend.emoji,
+                questionText: text,
+                choices:      choices
+            )
+        }
     }
 
     // 外部から注入するコールバック・ストア

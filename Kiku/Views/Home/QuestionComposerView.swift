@@ -1,0 +1,344 @@
+import SwiftUI
+
+// MARK: - QuestionComposerView
+
+struct QuestionComposerView: View {
+    var onSend: (String, [Friend]?, KikuGroup?, [AnswerChoice]) -> Void
+
+    @EnvironmentObject private var profileStore: ProfileStore
+    @EnvironmentObject private var friendStore:  FriendStore
+    @EnvironmentObject private var groupStore:   GroupStore
+
+    @State private var questionText:    String     = ""
+    @State private var selectedFriends: [Friend]   = []
+    @State private var selectedGroup:   KikuGroup? = nil
+    @State private var isShowingPicker:   Bool          = false
+
+    // 回答選択肢（デフォルト: ○ ✕）
+    @State private var choices:             [AnswerChoice] = [.yes, .no]
+    @State private var isShowingChoiceMenu: Bool           = false
+
+    private var canSend: Bool {
+        let hasText = !questionText.trimmingCharacters(in: .whitespaces).isEmpty
+        return hasText && (!selectedFriends.isEmpty || selectedGroup != nil)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+
+            // ① 質問入力行
+            HStack(alignment: .center, spacing: 12) {
+                Text(profileStore.emoji)
+                    .font(.system(size: 28))
+                    .frame(width: 42, height: 42)
+                    .background(Color(UIColor.secondarySystemBackground))
+                    .clipShape(Circle())
+
+                TextField("質問を送ろう…", text: $questionText, axis: .vertical)
+                    .font(.body)
+                    .lineLimit(1...4)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+
+            Divider()
+                .padding(.horizontal, 16)
+
+            // ② 送信先アバター行
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+
+                    // ＋ 追加ボタン
+                    Button {
+                        isShowingPicker = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 16, weight: .medium))
+                            .frame(width: 40, height: 40)
+                            .background(Color(UIColor.tertiarySystemBackground))
+                            .clipShape(Circle())
+                            .overlay(
+                                Circle().stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+
+                    // 選択済み友達
+                    ForEach(selectedFriends) { friend in
+                        ZStack(alignment: .topTrailing) {
+                            Text(friend.emoji)
+                                .font(.system(size: 22))
+                                .frame(width: 40, height: 40)
+                                .background(Color.blue.opacity(0.12))
+                                .clipShape(Circle())
+
+                            Button {
+                                selectedFriends.removeAll { $0.id == friend.id }
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(.white)
+                                    .background(Color.gray, in: Circle())
+                            }
+                            .offset(x: 4, y: -4)
+                        }
+                    }
+
+                    // 選択済みグループ
+                    if let group = selectedGroup {
+                        HStack(spacing: 6) {
+                            ZStack(alignment: .topTrailing) {
+                                Text("👥")
+                                    .font(.system(size: 22))
+                                    .frame(width: 40, height: 40)
+                                    .background(Color.blue.opacity(0.12))
+                                    .clipShape(Circle())
+
+                                Button {
+                                    selectedGroup = nil
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(.white)
+                                        .background(Color.gray, in: Circle())
+                                }
+                                .offset(x: 4, y: -4)
+                            }
+
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(group.name)
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                Text("\(group.memberIds.count)人")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+            }
+
+            Divider()
+                .padding(.horizontal, 16)
+
+            // ③ ボトムバー: 回答選択肢チップ + 送信ボタン
+            HStack(spacing: 0) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+
+                        // ＋ ボタン（一番左・全種類追加済みなら非表示）
+                        if choices.count < AnswerChoice.allCases.count {
+                            Button {
+                                isShowingChoiceMenu = true
+                            } label: {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 16, weight: .medium))
+                                    .frame(width: 36, height: 36)
+                                    .background(Color(UIColor.tertiarySystemBackground))
+                                    .clipShape(Circle())
+                                    .overlay(
+                                        Circle().stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        // 追加済み選択肢チップ（全て × で削除可能）
+                        ForEach(choices) { choice in
+                            choiceChip(choice)
+                        }
+                    }
+                    .padding(.leading, 16)
+                    .padding(.trailing, 8)
+                    .padding(.vertical, 12)
+                }
+
+                // 送信ボタン（右端固定）
+                Button {
+                    let trimmed = questionText.trimmingCharacters(in: .whitespaces)
+                    onSend(trimmed, selectedFriends.isEmpty ? nil : selectedFriends, selectedGroup, choices)
+                    questionText    = ""
+                    selectedFriends = []
+                    selectedGroup   = nil
+                    choices         = [.yes, .no]
+                } label: {
+                    Image(systemName: "paperplane.fill")
+                        .font(.title2)
+                        .foregroundStyle(canSend ? Color.blue : Color.secondary)
+                        .padding(10)
+                        .background(
+                            canSend ? Color.blue.opacity(0.1) : Color.clear,
+                            in: Circle()
+                        )
+                }
+                .disabled(!canSend)
+                .animation(.easeInOut(duration: 0.15), value: canSend)
+                .padding(.trailing, 12)
+            }
+            .confirmationDialog("選択肢を追加", isPresented: $isShowingChoiceMenu, titleVisibility: .visible) {
+                ForEach(AnswerChoice.allCases.filter { c in !choices.contains { $0.id == c.id } }) { choice in
+                    Button(choice.menuLabel) {
+                        choices.append(choice)
+                    }
+                }
+                Button("キャンセル", role: .cancel) {}
+            }
+        }
+        .background(Color(UIColor.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 2)
+        .sheet(isPresented: $isShowingPicker) {
+            DestinationPickerSheet(
+                selectedFriends: $selectedFriends,
+                selectedGroup:   $selectedGroup
+            )
+            .environmentObject(friendStore)
+            .environmentObject(groupStore)
+        }
+    }
+
+    // MARK: - 選択肢チップ
+
+    @ViewBuilder
+    private func choiceChip(_ choice: AnswerChoice) -> some View {
+        ZStack(alignment: .topTrailing) {
+            HStack(spacing: 5) {
+                Image(systemName: choice.icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(choice.tintColor)
+                if let label = choice.shortLabel {
+                    Text(label)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.primary)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(choice.tintColor.opacity(0.12))
+            .clipShape(Capsule())
+
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    choices.removeAll { $0.id == choice.id }
+                }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.white)
+                    .background(Color.gray.opacity(0.8), in: Circle())
+            }
+            .offset(x: 6, y: -6)
+        }
+        .padding(.top, 6)
+        .padding(.trailing, 6)
+    }
+}
+
+// MARK: - DestinationPickerSheet（友達・グループ統合）
+
+private struct DestinationPickerSheet: View {
+    @Binding var selectedFriends: [Friend]
+    @Binding var selectedGroup:   KikuGroup?
+
+    @EnvironmentObject private var friendStore: FriendStore
+    @EnvironmentObject private var groupStore:  GroupStore
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                // ─── 友達セクション ───
+                if !friendStore.friends.isEmpty {
+                    Section("友達") {
+                        ForEach(friendStore.friends) { friend in
+                            let isSelected = selectedFriends.contains { $0.id == friend.id }
+                            Button {
+                                if isSelected {
+                                    selectedFriends.removeAll { $0.id == friend.id }
+                                } else {
+                                    selectedFriends.append(friend)
+                                    selectedGroup = nil   // グループ選択をクリア
+                                }
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Text(friend.emoji).font(.title2)
+                                    Text(friend.name).font(.body).foregroundStyle(.primary)
+                                    Spacer()
+                                    if isSelected {
+                                        Image(systemName: "checkmark")
+                                            .foregroundStyle(.blue)
+                                            .fontWeight(.semibold)
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                // ─── グループセクション ───
+                if !groupStore.groups.isEmpty {
+                    Section("グループ") {
+                        ForEach(groupStore.groups.sorted(by: { $0.createdAt > $1.createdAt })) { group in
+                            let isSelected = selectedGroup?.id == group.id
+                            Button {
+                                selectedGroup   = isSelected ? nil : group
+                                selectedFriends = []   // 友達選択をクリア
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Text("👥").font(.title2)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(group.name).font(.headline).foregroundStyle(.primary)
+                                        Text("\(group.memberIds.count)人").font(.caption).foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    if isSelected {
+                                        Image(systemName: "checkmark")
+                                            .foregroundStyle(.blue)
+                                            .fontWeight(.semibold)
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                // ─── 空状態 ───
+                if friendStore.friends.isEmpty && groupStore.groups.isEmpty {
+                    ContentUnavailableView(
+                        "送信先がありません",
+                        systemImage: "person.badge.plus",
+                        description: Text("ランキングタブから友達を追加してください")
+                    )
+                }
+            }
+            .navigationTitle("送信先を選択")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("完了") { dismiss() }
+                        .fontWeight(.semibold)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Preview
+
+#Preview {
+    QuestionComposerView { text, friends, group, choices in
+        print("送信: \(text), 選択肢: \(choices.map(\.id))")
+    }
+    .environmentObject(ProfileStore())
+    .environmentObject(FriendStore())
+    .environmentObject(GroupStore())
+    .padding(20)
+    .background(Color(UIColor.systemGroupedBackground))
+}

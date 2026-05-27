@@ -41,7 +41,11 @@ class ActivityManager: ObservableObject {
         do {
             let activity = try Activity.request(
                 attributes: attributes,
-                content: .init(state: state, staleDate: nil),
+                content: .init(
+                    state:          state,
+                    staleDate:      Date().addingTimeInterval(600), // 10分間 fresh 維持
+                    relevanceScore: 1.0                              // 最高優先度で一番上に表示
+                ),
                 pushType: nil
             )
             isActive = true
