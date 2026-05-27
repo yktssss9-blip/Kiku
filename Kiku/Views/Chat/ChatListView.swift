@@ -7,6 +7,13 @@ struct ChatListView: View {
 
     @State private var sessionToDelete: ChatSession? = nil
     @State private var showDeleteAlert = false
+    @State private var searchText: String = ""
+
+    private var filteredSessions: [ChatSession] {
+        let sorted = chatStore.sessions.sorted { $0.lastMessageAt > $1.lastMessageAt }
+        if searchText.isEmpty { return sorted }
+        return sorted.filter { $0.questionText.localizedCaseInsensitiveContains(searchText) }
+    }
 
     var body: some View {
         NavigationStack {
@@ -17,6 +24,7 @@ struct ChatListView: View {
                     sessionList
                 }
             }
+            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "質問を検索")
             .navigationTitle("チャット")
         }
     }
@@ -44,7 +52,14 @@ struct ChatListView: View {
 
     private var sessionList: some View {
         List {
-            ForEach(chatStore.sessions.sorted { $0.lastMessageAt > $1.lastMessageAt }) { session in
+            if !searchText.isEmpty && filteredSessions.isEmpty {
+                ContentUnavailableView(
+                    "「\(searchText)」は見つかりません",
+                    systemImage: "magnifyingglass"
+                )
+                .listRowSeparator(.hidden)
+            }
+            ForEach(filteredSessions) { session in
                 NavigationLink(destination: ChatView(session: session)) {
                     sessionRow(session: session)
                 }

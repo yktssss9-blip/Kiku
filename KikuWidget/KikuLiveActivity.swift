@@ -1,6 +1,7 @@
 import SwiftUI
 import WidgetKit
 import ActivityKit
+import KikuShared
 
 // MARK: - ロック画面
 
@@ -8,45 +9,48 @@ struct KikuLiveActivityView: View {
     let context: ActivityViewContext<KikuActivityAttributes>
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 12) {
 
-            // ── ヘッダー: 宛先 / タイマー / ポイントヒント ──
-            HStack(alignment: .center) {
-                // 宛先
-                Label(context.attributes.memberName, systemImage: "person.circle.fill")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+            // ── 上段: テキスト左 ＋ アプリアイコン右（BeReal 風） ──
+            HStack(alignment: .top, spacing: 10) {
 
-                Spacer()
-
-                // タイマー（中央寄り・大きく）
-                HStack(spacing: 4) {
-                    Image(systemName: "clock")
+                VStack(alignment: .leading, spacing: 5) {
+                    // 宛先
+                    Text(context.attributes.memberName + "さんへ")
                         .font(.subheadline)
-                        .foregroundStyle(timerColor)
-                    Text(context.attributes.sentAt, style: .timer)
-                        .font(.title3).fontWeight(.bold).monospacedDigit()
-                        .foregroundStyle(timerColor)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+
+                    // 質問文（大きく）
+                    Text(context.attributes.questionText)
+                        .font(.title3).fontWeight(.bold)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    // 大きなタイマー ＋ ポイントヒント
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(context.attributes.sentAt, style: .timer)
+                            .font(.system(size: 32, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(timerColor)
+
+                        Text(pointLabel)
+                            .font(.subheadline).fontWeight(.semibold)
+                            .foregroundStyle(timerColor)
+                    }
                 }
 
-                Spacer()
+                Spacer(minLength: 4)
 
-                // ポイントヒント
-                Text(pointLabel)
-                    .font(.subheadline).fontWeight(.semibold)
-                    .foregroundStyle(timerColor)
+                // アプリアイコン（BeReal のカメラアイコンに相当）
+                Image(systemName: "questionmark.bubble.fill")
+                    .font(.system(size: 46))
+                    .foregroundStyle(.blue)
+                    .frame(width: 56)
+                    .padding(.top, 2)
             }
 
-            // ── 質問文（大きく・中央） ──
-            Text(context.attributes.questionText)
-                .font(.title2).fontWeight(.bold)
-                .multilineTextAlignment(.center)
-                .lineLimit(4)
-                .frame(maxWidth: .infinity)
-                .fixedSize(horizontal: false, vertical: true)
-
-            // ── はい / いいえ ボタン ──
+            // ── 下段: はい / いいえ ボタン ──
             HStack(spacing: 12) {
                 Button(intent: AnswerIntent(
                     questionId: context.attributes.questionId,
@@ -79,8 +83,8 @@ struct KikuLiveActivityView: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
     }
 
     private var timerColor: Color {
@@ -92,8 +96,8 @@ struct KikuLiveActivityView: View {
 
     private var pointLabel: String {
         let e = Date().timeIntervalSince(context.attributes.sentAt)
-        if e < 60  { return "⚡️+20pt" }
-        if e < 180 { return "🕐+10pt"  }
+        if e < 60  { return "⚡️ 今なら +20pt" }
+        if e < 180 { return "🕐 +10pt"  }
         return "+2pt"
     }
 }

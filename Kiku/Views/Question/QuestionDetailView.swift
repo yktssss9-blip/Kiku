@@ -9,6 +9,8 @@ struct QuestionDetailView: View {
 
     @State private var showReminderAlert = false
     @State private var reminderCount = 0
+    @State private var answerToReset: Answer? = nil
+    @State private var progressAnimated = false
 
     // 未回答メンバー一覧
     private var pendingAnswers: [Answer] {
@@ -59,6 +61,30 @@ struct QuestionDetailView: View {
         } message: {
             Text("\(reminderCount)人の未回答メンバーに再通知しました")
         }
+        .alert(
+            "回答を取り消しますか？",
+            isPresented: Binding(
+                get: { answerToReset != nil },
+                set: { if !$0 { answerToReset = nil } }
+            )
+        ) {
+            Button("取り消す", role: .destructive) {
+                if let ans = answerToReset {
+                    questionStore.resetAnswer(questionId: currentQuestion.id, memberId: ans.memberId)
+                }
+                answerToReset = nil
+            }
+            Button("キャンセル", role: .cancel) {
+                answerToReset = nil
+            }
+        } message: {
+            if let ans = answerToReset,
+               let friend = friendStore.friend(for: ans.memberId) {
+                Text("\(friend.name) さんの回答を「未回答」に戻します。ポイントは取り消されません。")
+            } else {
+                Text("この回答を「未回答」に戻します。ポイントは取り消されません。")
+            }
+        }
     }
 
     // MARK: - リマインド送信
@@ -88,15 +114,53 @@ struct QuestionDetailView: View {
 
     private var summaryCard: some View {
         let s = currentQuestion.summary()
-        return HStack(spacing: 0) {
-            summaryItem(label: "○",   count: s.yes,     color: .green)
-            Divider()
-            summaryItem(label: "✕", count: s.no,      color: .red)
-            Divider()
-            summaryItem(label: "未回答", count: s.pending, color: .orange)
+        let total = s.yes + s.no + s.pending
+        return VStack(spacing: 8) {
+            HStack(spacing: 0) {
+                summaryItem(label: "○",   count: s.yes,     color: .green)
+                Divider()
+                summaryItem(label: "✕", count: s.no,      color: .red)
+                Divider()
+                summaryItem(label: "未回答", count: s.pending, color: .orange)
+            }
+            .frame(maxWidth: .infinity)
+
+            GeometryReader { geo in
+                let width = geo.size.width
+                if total == 0 {
+                    Capsule()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(height: 8)
+                } else {
+                    HStack(spacing: 0) {
+                        Rectangle()
+                            .fill(Color.green)
+                            .frame(width: CGFloat(s.yes) / CGFloat(total) * width)
+                        Rectangle()
+                            .fill(Color.red)
+                            .frame(width: CGFloat(s.no) / CGFloat(total) * width)
+                        Rectangle()
+                            .fill(Color.orange.opacity(0.6))
+                            .frame(width: CGFloat(s.pending) / CGFloat(total) * width)
+                    }
+                    .frame(height: 8)
+                    .clipShape(Capsule())
+                    .scaleEffect(x: progressAnimated ? 1 : 0, anchor: .leading)
+                }
+            }
+            .frame(height: 8)
+            .padding(.horizontal, 16)
+
+            Text("\(s.yes + s.no)/\(total)人回答済み")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.6)) {
+                progressAnimated = true
+            }
+        }
     }
 
     private func summaryItem(label: String, count: Int, color: Color) -> some View {
@@ -133,6 +197,15 @@ struct QuestionDetailView: View {
             badge(for: answer.value)
         }
         .padding(.vertical, 2)
+        .contextMenu {
+            if answer.value != "pending" {
+                Button(role: .destructive) {
+                    answerToReset = answer
+                } label: {
+                    Label("回答を取り消す", systemImage: "arrow.uturn.backward")
+                }
+            }
+        }
     }
 
     private func tierColor(_ tier: PointTier) -> Color {

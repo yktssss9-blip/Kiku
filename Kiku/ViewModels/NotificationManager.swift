@@ -57,23 +57,47 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         questionText: String,
         choices:      [AnswerChoice] = [.yes, .no]
     ) {
-        registerCategory(for: choices)
+        // 送信者プロフィールを App Group UserDefaults から読み込む
+        let appGroup      = UserDefaults(suiteName: "group.com.yukichi.kiku")
+        let senderName     = appGroup?.string(forKey: "kiku.profile.name")     ?? "きく"
+        let senderEmoji    = appGroup?.string(forKey: "kiku.profile.emoji")    ?? "👤"
+        let senderIconMode = appGroup?.string(forKey: "kiku.profile.iconMode") ?? "emoji"
 
         let content = UNMutableNotificationContent()
-        content.title               = "\(memberEmoji) \(memberName)さんへ質問が届きました"
+        content.title               = "\(senderEmoji) \(senderName)さんから質問が届きました"
         content.body                = questionText
         content.sound               = .default
         content.categoryIdentifier  = Self.categoryId(for: choices)
         content.interruptionLevel   = .active
         content.userInfo            = [
-            "questionId": questionId.uuidString,
-            "memberId":   memberId.uuidString
+            "questionId":     questionId.uuidString,
+            "memberId":       memberId.uuidString,
+            "memberName":     memberName,
+            "memberEmoji":    memberEmoji,
+            "sentAt":         Date().timeIntervalSince1970,
+            "senderName":     senderName,
+            "senderEmoji":    senderEmoji,
+            "senderIconMode": senderIconMode
         ]
 
-        let trigger    = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
-        let identifier = "kiku-\(questionId.uuidString)-\(memberId.uuidString)"
-        let request    = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
-        UNUserNotificationCenter.current().add(request)
+        let newCategory = UNNotificationCategory(
+            identifier: Self.categoryId(for: choices),
+            actions: choices.map { $0.makeNotificationAction() },
+            intentIdentifiers: [],
+            options: []
+        )
+
+        // カテゴリ登録が完了してから通知をスケジュールする（レース条件を回避）
+        UNUserNotificationCenter.current().getNotificationCategories { existing in
+            var updated = existing.filter { $0.identifier != newCategory.identifier }
+            updated.insert(newCategory)
+            UNUserNotificationCenter.current().setNotificationCategories(updated)
+
+            let trigger    = UNTimeIntervalNotificationTrigger(timeInterval: 0.5, repeats: false)
+            let identifier = "kiku-\(questionId.uuidString)-\(memberId.uuidString)"
+            let request    = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+            UNUserNotificationCenter.current().add(request)
+        }
     }
 
     // MARK: - 通知タップ処理

@@ -1,33 +1,25 @@
 import SwiftUI
-
-private let emojiOptions: [String] = [
-    "👤", "🧑", "👩", "👨", "👧", "👦", "👴", "👵",
-    "🧒", "👶", "🧑‍🦱", "👩‍🦱", "🧑‍🦰", "👩‍🦰",
-    "🧑‍🦳", "👩‍🦳", "🧑‍🦲", "👩‍🦲",
-    "😀", "😎", "🥳", "🤓", "😺", "🐶", "🐱", "🐼",
-    "🦊", "🐻", "🐸", "🐨", "🦁", "🐯"
-]
+import PhotosUI
 
 struct ProfileSetupView: View {
     @ObservedObject var store: ProfileStore
 
-    @State private var name = ""
-    @State private var selectedEmoji = "👤"
+    @State private var name             = ""
+    @State private var selectedItem:    PhotosPickerItem? = nil
+    @State private var selectedData:    Data?             = nil
 
     var canProceed: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty && name.count <= 10
+        !name.trimmingCharacters(in: .whitespaces).isEmpty
+            && name.count <= 10
+            && selectedData != nil
     }
 
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
 
-            // ヘッダー
+            // ── ヘッダー ──
             VStack(spacing: 12) {
-                Text(selectedEmoji)
-                    .font(.system(size: 80))
-                    .padding(.bottom, 4)
-
                 Text("きく")
                     .font(.largeTitle)
                     .fontWeight(.bold)
@@ -39,7 +31,51 @@ struct ProfileSetupView: View {
             }
             .padding(.bottom, 40)
 
-            // 名前入力
+            // ── 写真ピッカー ──
+            PhotosPicker(selection: $selectedItem, matching: .images) {
+                ZStack {
+                    if let data = selectedData, let uiImage = UIImage(data: data) {
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 100, height: 100)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color.blue, lineWidth: 2))
+                    } else {
+                        Circle()
+                            .fill(Color(.systemGray5))
+                            .frame(width: 100, height: 100)
+                        VStack(spacing: 6) {
+                            Image(systemName: "camera.fill")
+                                .font(.title2)
+                                .foregroundStyle(.secondary)
+                            Text("写真を選ぶ")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    // 選択済みのときは右下に編集バッジ
+                    if selectedData != nil {
+                        Image(systemName: "pencil.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(.blue)
+                            .background(Color.white.clipShape(Circle()))
+                            .offset(x: 34, y: 34)
+                    }
+                }
+                .frame(width: 100, height: 100)
+            }
+            .onChange(of: selectedItem) { _, newItem in
+                Task {
+                    if let data = try? await newItem?.loadTransferable(type: Data.self) {
+                        selectedData = data
+                    }
+                }
+            }
+            .padding(.bottom, 32)
+
+            // ── 名前入力 ──
             VStack(alignment: .leading, spacing: 8) {
                 Text("あなたの名前")
                     .font(.caption)
@@ -54,55 +90,21 @@ struct ProfileSetupView: View {
                     .autocorrectionDisabled()
             }
             .padding(.horizontal, 24)
-            .padding(.bottom, 24)
+            .padding(.bottom, 8)
 
-            // 絵文字ピッカー
-            VStack(alignment: .leading, spacing: 8) {
-                Text("アイコンを選ぶ")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 4)
-
-                LazyVGrid(
-                    columns: Array(repeating: GridItem(.flexible()), count: 8),
-                    spacing: 8
-                ) {
-                    ForEach(emojiOptions, id: \.self) { emoji in
-                        Button {
-                            selectedEmoji = emoji
-                        } label: {
-                            Text(emoji)
-                                .font(.title3)
-                                .frame(width: 36, height: 36)
-                                .background(
-                                    selectedEmoji == emoji
-                                        ? Color.blue.opacity(0.15)
-                                        : Color(UIColor.secondarySystemBackground)
-                                )
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(
-                                            selectedEmoji == emoji ? Color.blue : Color.clear,
-                                            lineWidth: 2
-                                        )
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(12)
-                .background(Color(UIColor.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-            }
-            .padding(.horizontal, 24)
+            Text("名前と写真を設定してください")
+                .font(.caption)
+                .foregroundStyle(canProceed ? .clear : .secondary)
+                .padding(.bottom, 16)
 
             Spacer()
 
-            // はじめるボタン
+            // ── はじめるボタン ──
             Button {
-                store.name  = name.trimmingCharacters(in: .whitespaces)
-                store.emoji = selectedEmoji
+                store.name      = name.trimmingCharacters(in: .whitespaces)
+                store.photoData = selectedData
+                store.iconMode  = .photo
+                store.emoji     = "👤"   // フォールバック用
             } label: {
                 Text("はじめる")
                     .font(.headline)

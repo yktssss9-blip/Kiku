@@ -1,4 +1,5 @@
 import ActivityKit
+import KikuShared
 import SwiftUI
 
 @MainActor
@@ -16,9 +17,11 @@ class ActivityManager: ObservableObject {
             return
         }
 
-        // 既存のActivityをすべて終了してから新しく起動
+        // 同じ質問・同じメンバーの既存Activityのみ終了（他メンバー分は維持）
         Task {
-            for activity in Activity<KikuActivityAttributes>.activities {
+            for activity in Activity<KikuActivityAttributes>.activities
+                where activity.attributes.questionId == question.id.uuidString
+                   && activity.attributes.memberId   == memberId.uuidString {
                 await activity.end(nil, dismissalPolicy: .immediate)
             }
             await requestNew(question: question, memberId: memberId, memberName: memberName)

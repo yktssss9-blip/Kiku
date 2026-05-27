@@ -22,36 +22,37 @@ struct Answer: Codable {
 struct Question: Identifiable, Codable {
     var id: UUID = UUID()
     var text: String
-    var groupId: UUID?      // nil = 全体送信
-    var isBroadcast: Bool = false
+    var groupId: UUID?      // nil = 個人宛
     var answers: [Answer]
     var createdAt: Date = Date()
     var choices: [String] = ["yes", "no"]  // AnswerChoice.rawValue で保存
 
-    // 既存データとの後方互換デコード
+    // 既存データとの後方互換デコード（旧 isBroadcast フィールドは無視）
     enum CodingKeys: String, CodingKey {
-        case id, text, groupId, isBroadcast, answers, createdAt, choices
+        case id, text, groupId, answers, createdAt, choices
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        id          = try c.decode(UUID.self,     forKey: .id)
-        text        = try c.decode(String.self,   forKey: .text)
-        groupId     = try c.decodeIfPresent(UUID.self,   forKey: .groupId)
-        isBroadcast = try c.decodeIfPresent(Bool.self,   forKey: .isBroadcast) ?? false
-        answers     = try c.decode([Answer].self, forKey: .answers)
-        createdAt   = try c.decodeIfPresent(Date.self,   forKey: .createdAt) ?? Date()
-        choices     = try c.decodeIfPresent([String].self, forKey: .choices) ?? ["yes", "no"]
+        id        = try c.decode(UUID.self,     forKey: .id)
+        text      = try c.decode(String.self,   forKey: .text)
+        groupId   = try c.decodeIfPresent(UUID.self,    forKey: .groupId)
+        answers   = try c.decode([Answer].self, forKey: .answers)
+        createdAt = try c.decodeIfPresent(Date.self,    forKey: .createdAt) ?? Date()
+        choices   = try c.decodeIfPresent([String].self, forKey: .choices) ?? ["yes", "no"]
     }
     init(id: UUID = UUID(), text: String, groupId: UUID? = nil,
-         isBroadcast: Bool = false, answers: [Answer],
-         createdAt: Date = Date(), choices: [String] = ["yes", "no"]) {
+         answers: [Answer], createdAt: Date = Date(), choices: [String] = ["yes", "no"]) {
         self.id = id; self.text = text; self.groupId = groupId
-        self.isBroadcast = isBroadcast; self.answers = answers
-        self.createdAt = createdAt; self.choices = choices
+        self.answers = answers; self.createdAt = createdAt; self.choices = choices
     }
 
     var answerChoices: [AnswerChoice] {
         choices.compactMap { AnswerChoice(rawValue: $0) }
+    }
+
+    /// 全メンバーが回答済み（pending なし）なら true
+    var isCompleted: Bool {
+        !answers.isEmpty && answers.allSatisfy { $0.value != "pending" }
     }
 
     func summary() -> (yes: Int, no: Int, pending: Int) {
@@ -83,6 +84,18 @@ class QuestionStore: ObservableObject {
            let decoded = try? JSONDecoder().decode([Question].self, from: data) {
             questions = decoded
         }
+        purgeOldCompleted()
+    }
+
+    /// 完了済み（全員回答済み）かつ指定日数以上前の質問を自動削除する
+    func purgeOldCompleted(olderThan days: Int = 30) {
+        let threshold = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
+        let before = questions.count
+        questions.removeAll { $0.isCompleted && $0.createdAt < threshold }
+        let removed = before - questions.count
+        if removed > 0 {
+            print("[QuestionStore] 自動削除: 完了済み古い質問を \(removed) 件削除しました")
+        }
     }
 
     // グループへの送信
@@ -106,10 +119,10 @@ class QuestionStore: ObservableObject {
         }
     }
 
-    // 全体送信（全友達へ）
-    func sendBroadcast(text: String, to friends: [Friend], choices: [AnswerChoice] = [.yes, .no]) {
+    // 個人宛送信（選択した友達へ）
+    func sendToIndividuals(text: String, to friends: [Friend], choices: [AnswerChoice] = [.yes, .no]) {
         let answers  = friends.map { Answer(memberId: $0.id, value: "pending") }
-        let question = Question(text: text, groupId: nil, isBroadcast: true, answers: answers,
+        let question = Question(text: text, groupId: nil, answers: answers,
                                 choices: choices.map(\.rawValue))
         questions.append(question)
         NotificationManager.playOutgoingSound()
@@ -135,6 +148,9 @@ class QuestionStore: ObservableObject {
         guard let idx = questions.firstIndex(where: { $0.id == questionId }),
               let aidx = questions[idx].answers.firstIndex(where: { $0.memberId == memberId })
         else { return }
+
+        // 既回答済みの場合はポイント重複付与を防ぐためスキップ
+        guard questions[idx].answers[aidx].value == "pending" else { return }
 
         let now = Date()
         questions[idx].answers[aidx].value      = value
@@ -191,13 +207,21 @@ class QuestionStore: ObservableObject {
         questions.removeAll { $0.id == questionId }
     }
 
-    func questions(for group: KikuGroup) -> [Question] {
-        questions.filter { $0.groupId == group.id }
-                 .sorted { $0.createdAt > $1.createdAt }
+    /// 指定グループに属する質問をすべて削除（グループ連鎖削除用）
+    func deleteQuestions(forGroupId groupId: UUID) {
+        questions.removeAll { $0.groupId == groupId }
     }
 
-    var broadcastQuestions: [Question] {
-        questions.filter { $0.isBroadcast }
+    func resetAnswer(questionId: UUID, memberId: UUID) {
+        guard let idx = questions.firstIndex(where: { $0.id == questionId }),
+              let aidx = questions[idx].answers.firstIndex(where: { $0.memberId == memberId })
+        else { return }
+        questions[idx].answers[aidx].value      = "pending"
+        questions[idx].answers[aidx].answeredAt = nil
+    }
+
+    func questions(for group: KikuGroup) -> [Question] {
+        questions.filter { $0.groupId == group.id }
                  .sorted { $0.createdAt > $1.createdAt }
     }
 

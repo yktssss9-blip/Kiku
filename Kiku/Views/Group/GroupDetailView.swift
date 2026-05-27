@@ -4,8 +4,10 @@ struct GroupDetailView: View {
     let group: KikuGroup
     @EnvironmentObject private var questionStore: QuestionStore
     @EnvironmentObject private var friendStore: FriendStore
+    @EnvironmentObject private var groupStore: GroupStore
 
     @State private var isShowingQuestionCreate = false
+    @State private var isShowingEdit = false
 
     var questions: [Question] {
         questionStore.questions(for: group)
@@ -34,13 +36,26 @@ struct GroupDetailView: View {
                             questionRow(question)
                         }
                     }
+                    .onDelete { offsets in
+                        offsets.map { questions[$0].id }.forEach { questionStore.delete(questionId: $0) }
+                    }
                 }
             }
         }
         .navigationTitle(group.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("編集") {
+                    isShowingEdit = true
+                }
+            }
+        }
         .sheet(isPresented: $isShowingQuestionCreate) {
             QuestionCreateView(group: group)
+        }
+        .sheet(isPresented: $isShowingEdit) {
+            GroupEditView(group: group)
         }
     }
 

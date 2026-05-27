@@ -19,12 +19,14 @@ public struct KikuActivityAttributes: ActivityAttributes {
     public var totalCount: Int
     public var memberId: String
     public var memberName: String
+    public var sentAt: Date        // 質問を送った時刻（カウントアップ基点）
 
-    public init(questionId: String, questionText: String, totalCount: Int, memberId: String, memberName: String) {
+    public init(questionId: String, questionText: String, totalCount: Int, memberId: String, memberName: String, sentAt: Date) {
         self.questionId = questionId
         self.questionText = questionText
         self.totalCount = totalCount
         self.memberId = memberId
         self.memberName = memberName
+        self.sentAt = sentAt
     }
 }

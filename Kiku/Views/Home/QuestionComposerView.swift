@@ -261,14 +261,26 @@ private struct DestinationPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var isShowingGroupCreate = false
+    @State private var searchText: String = ""
+
+    private var filteredFriends: [Friend] {
+        if searchText.isEmpty { return friendStore.friends }
+        return friendStore.friends.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    }
+
+    private var filteredGroups: [KikuGroup] {
+        let sorted = groupStore.groups.sorted { $0.createdAt > $1.createdAt }
+        if searchText.isEmpty { return sorted }
+        return sorted.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    }
 
     var body: some View {
         NavigationStack {
             List {
                 // ─── 友達セクション ───
-                if !friendStore.friends.isEmpty {
+                if !filteredFriends.isEmpty {
                     Section("友達") {
-                        ForEach(friendStore.friends) { friend in
+                        ForEach(filteredFriends) { friend in
                             let isSelected = selectedFriends.contains { $0.id == friend.id }
                             Button {
                                 if isSelected {
@@ -296,9 +308,10 @@ private struct DestinationPickerSheet: View {
                 }
 
                 // ─── グループセクション ───
+                if !filteredGroups.isEmpty || searchText.isEmpty {
                 Section {
                     // グループ一覧
-                    ForEach(groupStore.groups.sorted(by: { $0.createdAt > $1.createdAt })) { group in
+                    ForEach(filteredGroups) { group in
                         let isSelected = selectedGroup?.id == group.id
                         Button {
                             selectedGroup   = isSelected ? nil : group
@@ -339,6 +352,7 @@ private struct DestinationPickerSheet: View {
                 } header: {
                     Text("グループ")
                 }
+                }
 
                 // ─── 空状態 ───
                 if friendStore.friends.isEmpty && groupStore.groups.isEmpty {
@@ -347,8 +361,14 @@ private struct DestinationPickerSheet: View {
                         systemImage: "person.badge.plus",
                         description: Text("ランキングタブから友達を追加してください")
                     )
+                } else if !searchText.isEmpty && filteredFriends.isEmpty && filteredGroups.isEmpty {
+                    ContentUnavailableView(
+                        "「\(searchText)」は見つかりません",
+                        systemImage: "magnifyingglass"
+                    )
                 }
             }
+            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "名前で検索")
             .navigationTitle("送信先を選択")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

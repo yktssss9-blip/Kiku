@@ -34,6 +34,7 @@ struct KikuApp: App {
                         questionStore.pointStore = pointStore
                         questionStore.applyPendingFromSharedStore()
                         checkLiveActivityAuthorization()
+                        setupGroupDeletion()
                     }
                     // フォアグラウンド復帰時にも取り込む
                     .onReceive(
@@ -127,6 +128,14 @@ struct KikuApp: App {
                 memberName:  friend?.name  ?? "メンバー",
                 memberEmoji: friend?.emoji ?? "👤"
             )
+        }
+    }
+
+    private func setupGroupDeletion() {
+        groupStore.onGroupDeleted = { [weak questionStore] groupId in
+            DispatchQueue.main.async {
+                questionStore?.deleteQuestions(forGroupId: groupId)
+            }
         }
     }
 
