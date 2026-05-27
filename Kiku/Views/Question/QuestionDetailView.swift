@@ -16,14 +16,14 @@ struct QuestionDetailView: View {
         question.answers.filter { $0.value == "pending" }
     }
 
+    private var currentQuestion: Question {
+        questionStore.questions.first { $0.id == question.id } ?? question
+    }
+
     var body: some View {
         List {
-            // 集計サマリー
-            Section {
-                summaryCard
-            }
+            Section { summaryCard }
 
-            // 未回答リマインドボタン（CORE 05）
             Section {
                 Button {
                     sendReminders()
@@ -47,46 +47,36 @@ struct QuestionDetailView: View {
                 .disabled(pendingAnswers.isEmpty)
             }
 
-            // Live Activity 起動
             Section("通知バーで回答") {
                 if pendingAnswers.isEmpty {
-                    Text("全員回答済みです")
-                        .foregroundStyle(.secondary)
-                        .font(.subheadline)
+                    Text("全員回答済みです").foregroundStyle(.secondary).font(.subheadline)
                 } else {
                     ForEach(pendingAnswers, id: \.memberId) { answer in
                         if let friend = friendStore.friend(for: answer.memberId) {
                             Button {
-                                activityManager.start(
-                                    question: question,
-                                    memberId: friend.id,
-                                    memberName: friend.name
-                                )
+                                activityManager.start(question: currentQuestion,
+                                                      memberId: friend.id,
+                                                      memberName: friend.name)
                             } label: {
                                 HStack {
                                     Text(friend.emoji).font(.title3)
                                     Text("\(friend.name) に送る")
                                     Spacer()
-                                    Image(systemName: "bell.badge.fill")
-                                        .foregroundStyle(.blue)
+                                    Image(systemName: "bell.badge.fill").foregroundStyle(.blue)
                                 }
                             }
                             .buttonStyle(.plain)
                         }
                     }
                 }
-
-                // Activityエラー表示
                 if let error = activityManager.lastError {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                        .font(.caption)
+                        .foregroundStyle(.orange).font(.caption)
                 }
             }
 
-            // メンバー別回答一覧
             Section("メンバーの回答") {
-                ForEach(question.answers, id: \.memberId) { answer in
+                ForEach(currentQuestion.answers, id: \.memberId) { answer in
                     answerRow(answer)
                 }
             }
