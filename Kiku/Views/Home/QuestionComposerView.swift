@@ -5,9 +5,10 @@ import SwiftUI
 struct QuestionComposerView: View {
     var onSend: (String, [Friend]?, KikuGroup?, [AnswerChoice]) -> Void
 
-    @EnvironmentObject private var profileStore: ProfileStore
-    @EnvironmentObject private var friendStore:  FriendStore
-    @EnvironmentObject private var groupStore:   GroupStore
+    @EnvironmentObject private var profileStore:  ProfileStore
+    @EnvironmentObject private var friendStore:   FriendStore
+    @EnvironmentObject private var groupStore:    GroupStore
+    @EnvironmentObject private var templateStore: TemplateStore
 
     @State private var questionText:    String     = ""
     @State private var selectedFriends: [Friend]   = []
@@ -15,8 +16,15 @@ struct QuestionComposerView: View {
     @State private var isShowingPicker:   Bool          = false
 
     // 回答選択肢（デフォルト: ○ ✕）
-    @State private var choices:             [AnswerChoice] = [.yes, .no]
-    @State private var isShowingChoiceMenu: Bool           = false
+    @State private var choices:              [AnswerChoice] = [.yes, .no]
+    @State private var isShowingChoiceMenu:  Bool           = false
+    @State private var isShowingTemplates:   Bool           = false
+    @State private var showStopTimeAlert:    Bool           = false
+    @State private var stopTimeNames:        String         = ""
+    @State private var pendingText:          String         = ""
+    @State private var pendingFriends:       [Friend]?      = nil
+    @State private var pendingGroup:         KikuGroup?     = nil
+    @State private var pendingChoices:       [AnswerChoice] = []
 
     private var canSend: Bool {
         let hasText = !questionText.trimmingCharacters(in: .whitespaces).isEmpty
@@ -74,11 +82,20 @@ struct QuestionComposerView: View {
                     // 選択済み友達
                     ForEach(selectedFriends) { friend in
                         ZStack(alignment: .topTrailing) {
-                            Text(friend.emoji)
-                                .font(.system(size: 22))
-                                .frame(width: 40, height: 40)
-                                .background(Color.blue.opacity(0.12))
-                                .clipShape(Circle())
+                            ZStack(alignment: .bottomTrailing) {
+                                Text(friend.emoji)
+                                    .font(.system(size: 22))
+                                    .frame(width: 40, height: 40)
+                                    .background(friendStore.isStopTime(friend) ? Color.orange.opacity(0.15) : Color.blue.opacity(0.12))
+                                    .clipShape(Circle())
+                                if friendStore.isStopTime(friend) {
+                                    Image(systemName: "pause.circle.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(.orange)
+                                        .background(Color(UIColor.systemBackground), in: Circle())
+                                        .offset(x: 4, y: 4)
+                                }
+                            }
 
                             Button {
                                 selectedFriends.removeAll { $0.id == friend.id }
@@ -164,14 +181,41 @@ struct QuestionComposerView: View {
                     .padding(.vertical, 12)
                 }
 
+                // テンプレートボタン
+                Button {
+                    isShowingTemplates = true
+                } label: {
+                    Image(systemName: "bookmark")
+                        .font(.title2)
+                        .foregroundStyle(Color.secondary)
+                        .padding(10)
+                }
+                .padding(.trailing, 2)
+
                 // 送信ボタン（右端固定）
                 Button {
                     let trimmed = questionText.trimmingCharacters(in: .whitespaces)
-                    onSend(trimmed, selectedFriends.isEmpty ? nil : selectedFriends, selectedGroup, choices)
-                    questionText    = ""
-                    selectedFriends = []
-                    selectedGroup   = nil
-                    choices         = [.yes, .no]
+                    let stopNames: [String]
+                    if !selectedFriends.isEmpty {
+                        stopNames = selectedFriends.filter { friendStore.isStopTime($0) }.map(\.name)
+                    } else if let group = selectedGroup {
+                        stopNames = group.memberIds.compactMap { id in
+                            friendStore.friends.first { $0.id == id && friendStore.isStopTime($0) }?.name
+                        }
+                    } else {
+                        stopNames = []
+                    }
+                    if stopNames.isEmpty {
+                        onSend(trimmed, selectedFriends.isEmpty ? nil : selectedFriends, selectedGroup, choices)
+                        resetComposer()
+                    } else {
+                        pendingText    = trimmed
+                        pendingFriends = selectedFriends.isEmpty ? nil : selectedFriends
+                        pendingGroup   = selectedGroup
+                        pendingChoices = choices
+                        stopTimeNames  = stopNames.joined(separator: "、")
+                        showStopTimeAlert = true
+                    }
                 } label: {
                     Image(systemName: "paperplane.fill")
                         .font(.title2)
@@ -195,6 +239,15 @@ struct QuestionComposerView: View {
                 Button("キャンセル", role: .cancel) {}
             }
         }
+        .alert("Stop Time 中の人がいます", isPresented: $showStopTimeAlert) {
+            Button("それでも送信する", role: .destructive) {
+                onSend(pendingText, pendingFriends, pendingGroup, pendingChoices)
+                resetComposer()
+            }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text("\(stopTimeNames) は現在 Stop Time 中です。それでも送信しますか？")
+        }
         .background(Color(UIColor.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(
@@ -209,6 +262,42 @@ struct QuestionComposerView: View {
             )
             .environmentObject(friendStore)
             .environmentObject(groupStore)
+        }
+        .sheet(isPresented: $isShowingTemplates) {
+            TemplateListSheet(
+                currentText:      questionText,
+                currentFriendIds: selectedFriends.map(\.id),
+                currentGroupId:   selectedGroup?.id,
+                currentChoices:   choices
+            ) { template in
+                applyTemplate(template)
+            }
+            .environmentObject(templateStore)
+            .environmentObject(friendStore)
+            .environmentObject(groupStore)
+        }
+    }
+
+    private func resetComposer() {
+        questionText    = ""
+        selectedFriends = []
+        selectedGroup   = nil
+        choices         = [.yes, .no]
+    }
+
+    private func applyTemplate(_ template: QuestionTemplate) {
+        questionText = template.text
+        choices = template.choices.compactMap { AnswerChoice(rawValue: $0) }
+        if choices.isEmpty { choices = [.yes, .no] }
+
+        if let groupId = template.groupId {
+            selectedGroup   = groupStore.groups.first { $0.id == groupId }
+            selectedFriends = []
+        } else {
+            selectedFriends = template.friendIds.compactMap { id in
+                friendStore.friends.first { $0.id == id }
+            }
+            selectedGroup = nil
         }
     }
 
@@ -281,18 +370,26 @@ private struct DestinationPickerSheet: View {
                 if !filteredFriends.isEmpty {
                     Section("友達") {
                         ForEach(filteredFriends) { friend in
-                            let isSelected = selectedFriends.contains { $0.id == friend.id }
+                            let isSelected  = selectedFriends.contains { $0.id == friend.id }
+                            let isStopTime  = friendStore.isStopTime(friend)
                             Button {
                                 if isSelected {
                                     selectedFriends.removeAll { $0.id == friend.id }
                                 } else {
                                     selectedFriends.append(friend)
-                                    selectedGroup = nil   // グループ選択をクリア
+                                    selectedGroup = nil
                                 }
                             } label: {
                                 HStack(spacing: 12) {
                                     Text(friend.emoji).font(.title2)
-                                    Text(friend.name).font(.body).foregroundStyle(.primary)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(friend.name).font(.body).foregroundStyle(.primary)
+                                        if isStopTime {
+                                            Label("Stop Time 中", systemImage: "pause.circle.fill")
+                                                .font(.caption2)
+                                                .foregroundStyle(.orange)
+                                        }
+                                    }
                                     Spacer()
                                     if isSelected {
                                         Image(systemName: "checkmark")
@@ -369,6 +466,7 @@ private struct DestinationPickerSheet: View {
                 }
             }
             .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "名前で検索")
+            .task { await friendStore.fetchStopTimeStatuses() }
             .navigationTitle("送信先を選択")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -393,6 +491,7 @@ private struct DestinationPickerSheet: View {
     .environmentObject(ProfileStore())
     .environmentObject(FriendStore())
     .environmentObject(GroupStore())
+    .environmentObject(TemplateStore())
     .padding(20)
     .background(Color(UIColor.systemGroupedBackground))
 }

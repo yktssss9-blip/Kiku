@@ -1,4 +1,6 @@
 import SwiftUI
+import FirebaseFirestore
+import FirebaseAuth
 
 // MARK: - ヘルパー
 
@@ -22,12 +24,11 @@ struct Answer: Codable {
 struct Question: Identifiable, Codable {
     var id: UUID = UUID()
     var text: String
-    var groupId: UUID?      // nil = 個人宛
+    var groupId: UUID?
     var answers: [Answer]
     var createdAt: Date = Date()
-    var choices: [String] = ["yes", "no"]  // AnswerChoice.rawValue で保存
+    var choices: [String] = ["yes", "no"]
 
-    // 既存データとの後方互換デコード（旧 isBroadcast フィールドは無視）
     enum CodingKeys: String, CodingKey {
         case id, text, groupId, answers, createdAt, choices
     }
@@ -50,7 +51,6 @@ struct Question: Identifiable, Codable {
         choices.compactMap { AnswerChoice(rawValue: $0) }
     }
 
-    /// 全メンバーが回答済み（pending なし）なら true
     var isCompleted: Bool {
         !answers.isEmpty && answers.allSatisfy { $0.value != "pending" }
     }
@@ -59,14 +59,9 @@ struct Question: Identifiable, Codable {
         var yes = 0, no = 0, pending = 0
         for a in answers {
             let v = a.value
-            if v == "pending" {
-                pending += 1
-            } else if answerIsNo(v) {
-                no += 1
-            } else {
-                // answerIsYes(v)（"yes" / "yes:text" / 時刻値）および未知値 → 後方互換でyesに加算
-                yes += 1
-            }
+            if v == "pending"        { pending += 1 }
+            else if answerIsNo(v)    { no      += 1 }
+            else                     { yes     += 1 }
         }
         return (yes, no, pending)
     }
@@ -74,10 +69,15 @@ struct Question: Identifiable, Codable {
 
 class QuestionStore: ObservableObject {
     @Published var questions: [Question] = [] {
-        didSet { save() }
+        didSet {
+            if !isUpdatingFromFirestore { save() }
+        }
     }
 
     private let key = "kiku.questions"
+    private let db  = Firestore.firestore()
+    private var listener: ListenerRegistration?
+    private var isUpdatingFromFirestore = false
 
     init() {
         if let data = UserDefaults.standard.data(forKey: key),
@@ -87,23 +87,56 @@ class QuestionStore: ObservableObject {
         purgeOldCompleted()
     }
 
-    /// 完了済み（全員回答済み）かつ指定日数以上前の質問を自動削除する
-    func purgeOldCompleted(olderThan days: Int = 30) {
-        let threshold = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
-        let before = questions.count
-        questions.removeAll { $0.isCompleted && $0.createdAt < threshold }
-        let removed = before - questions.count
-        if removed > 0 {
-            print("[QuestionStore] 自動削除: 完了済み古い質問を \(removed) 件削除しました")
+    // MARK: - Firestore リスナー
+
+    func startListening(forUID uid: String) {
+        stopListening()
+        listener = db.collection("questions")
+            .whereField("createdBy", isEqualTo: uid)
+            .addSnapshotListener { [weak self] snapshot, _ in
+                guard let self, let docs = snapshot?.documents else { return }
+                self.mergeFromFirestore(docs)
+            }
+    }
+
+    func stopListening() {
+        listener?.remove()
+        listener = nil
+    }
+
+    /// Firestoreから取得した質問をローカルにマージ（pending状態は上書きしない）
+    private func mergeFromFirestore(_ docs: [QueryDocumentSnapshot]) {
+        var merged = self.questions
+        for doc in docs {
+            guard let q = questionFromFirestore(doc) else { continue }
+            if let idx = merged.firstIndex(where: { $0.id == q.id }) {
+                // 既存の質問: Firestoreの回答状態で更新（pendingは保持）
+                for fsAnswer in q.answers {
+                    if let aidx = merged[idx].answers.firstIndex(where: { $0.memberId == fsAnswer.memberId }),
+                       merged[idx].answers[aidx].value == "pending",
+                       fsAnswer.value != "pending" {
+                        merged[idx].answers[aidx] = fsAnswer
+                    }
+                }
+            } else {
+                merged.append(q)
+            }
+        }
+        DispatchQueue.main.async {
+            self.isUpdatingFromFirestore = true
+            self.questions = merged
+            self.isUpdatingFromFirestore = false
         }
     }
 
-    // グループへの送信
+    // MARK: - 質問送信
+
     func send(text: String, to group: KikuGroup, friends: [Friend] = [], choices: [AnswerChoice] = [.yes, .no]) {
         let answers  = group.memberIds.map { Answer(memberId: $0, value: "pending") }
         let question = Question(text: text, groupId: group.id, answers: answers,
                                 choices: choices.map(\.rawValue))
         questions.append(question)
+        saveQuestionToFirestore(question)
         NotificationManager.playOutgoingSound()
 
         for memberId in group.memberIds {
@@ -119,12 +152,12 @@ class QuestionStore: ObservableObject {
         }
     }
 
-    // 個人宛送信（選択した友達へ）
     func sendToIndividuals(text: String, to friends: [Friend], choices: [AnswerChoice] = [.yes, .no]) {
         let answers  = friends.map { Answer(memberId: $0.id, value: "pending") }
         let question = Question(text: text, groupId: nil, answers: answers,
                                 choices: choices.map(\.rawValue))
         questions.append(question)
+        saveQuestionToFirestore(question)
         NotificationManager.playOutgoingSound()
 
         for friend in friends {
@@ -139,17 +172,16 @@ class QuestionStore: ObservableObject {
         }
     }
 
-    // 外部から注入するコールバック・ストア
-    // コールバック引数: (questionId, memberId, questionText, answerValue)
+    // MARK: - 回答処理
+
     var onAnswered: ((UUID, UUID, String, String) -> Void)?
     var pointStore: PointStore?
+    var senderMemberId: UUID?
 
     func submit(questionId: UUID, memberId: UUID, value: String) {
-        guard let idx = questions.firstIndex(where: { $0.id == questionId }),
+        guard let idx  = questions.firstIndex(where: { $0.id == questionId }),
               let aidx = questions[idx].answers.firstIndex(where: { $0.memberId == memberId })
         else { return }
-
-        // 既回答済みの場合はポイント重複付与を防ぐためスキップ
         guard questions[idx].answers[aidx].value == "pending" else { return }
 
         let now = Date()
@@ -157,73 +189,151 @@ class QuestionStore: ObservableObject {
         questions[idx].answers[aidx].answeredAt = now
 
         let question = questions[idx]
-
-        // ポイント付与：質問送信からの経過時間で決定
-        let elapsed = now.timeIntervalSince(question.createdAt)
-        pointStore?.add(
-            questionId:   questionId,
-            memberId:     memberId,
-            questionText: question.text,
-            elapsed:      elapsed
-        )
-
+        let elapsed  = now.timeIntervalSince(question.createdAt)
+        pointStore?.add(questionId: questionId, memberId: memberId,
+                        questionText: question.text, elapsed: elapsed)
+        if let senderId = senderMemberId {
+            pointStore?.addSenderBonus(questionId: questionId, senderMemberId: senderId,
+                                       questionText: question.text, elapsed: elapsed)
+        }
         onAnswered?(questionId, memberId, question.text, value)
 
-        // App Groups経由の未処理回答もここで取り込む
+        updateAnswerInFirestore(questionId: questionId, memberId: memberId,
+                                value: value, answeredAt: now)
         applyPendingFromSharedStore()
     }
 
-    // App GroupsのUserDefaultsから未処理の回答を取り込む
     func applyPendingFromSharedStore() {
         guard let defaults = UserDefaults(suiteName: "group.com.yukichi.kiku") else { return }
         let keys = defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix("answer.") }
         for key in keys {
             let parts = key.split(separator: ".").map(String.init)
             guard parts.count == 3,
-                  let qid = UUID(uuidString: parts[1]),
-                  let mid = UUID(uuidString: parts[2]),
+                  let qid   = UUID(uuidString: parts[1]),
+                  let mid   = UUID(uuidString: parts[2]),
                   let value = defaults.string(forKey: key) else { continue }
             defaults.removeObject(forKey: key)
-            if let idx = questions.firstIndex(where: { $0.id == qid }),
+            if let idx  = questions.firstIndex(where: { $0.id == qid }),
                let aidx = questions[idx].answers.firstIndex(where: { $0.memberId == mid }),
                questions[idx].answers[aidx].value == "pending" {
-                let now = Date()
+                let now     = Date()
                 questions[idx].answers[aidx].value      = value
                 questions[idx].answers[aidx].answeredAt = now
-                let q = questions[idx]
+                let q       = questions[idx]
                 let elapsed = now.timeIntervalSince(q.createdAt)
-                pointStore?.add(
-                    questionId:   qid,
-                    memberId:     mid,
-                    questionText: q.text,
-                    elapsed:      elapsed
-                )
+                pointStore?.add(questionId: qid, memberId: mid,
+                                questionText: q.text, elapsed: elapsed)
+                if let senderId = senderMemberId {
+                    pointStore?.addSenderBonus(questionId: qid, senderMemberId: senderId,
+                                               questionText: q.text, elapsed: elapsed)
+                }
                 onAnswered?(qid, mid, q.text, value)
+                updateAnswerInFirestore(questionId: qid, memberId: mid,
+                                        value: value, answeredAt: now)
             }
         }
     }
 
     func delete(questionId: UUID) {
         questions.removeAll { $0.id == questionId }
+        db.collection("questions").document(questionId.uuidString).delete()
     }
 
-    /// 指定グループに属する質問をすべて削除（グループ連鎖削除用）
     func deleteQuestions(forGroupId groupId: UUID) {
+        let targets = questions.filter { $0.groupId == groupId }
         questions.removeAll { $0.groupId == groupId }
+        for q in targets {
+            db.collection("questions").document(q.id.uuidString).delete()
+        }
     }
 
     func resetAnswer(questionId: UUID, memberId: UUID) {
-        guard let idx = questions.firstIndex(where: { $0.id == questionId }),
+        guard let idx  = questions.firstIndex(where: { $0.id == questionId }),
               let aidx = questions[idx].answers.firstIndex(where: { $0.memberId == memberId })
         else { return }
         questions[idx].answers[aidx].value      = "pending"
         questions[idx].answers[aidx].answeredAt = nil
+
+        let key = "answers.\(memberId.uuidString)"
+        db.collection("questions").document(questionId.uuidString).updateData([
+            "\(key).value": "pending",
+            "\(key).answeredAt": NSNull()
+        ])
     }
 
     func questions(for group: KikuGroup) -> [Question] {
         questions.filter { $0.groupId == group.id }
                  .sorted { $0.createdAt > $1.createdAt }
     }
+
+    func purgeOldCompleted(olderThan days: Int = 30) {
+        let threshold = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
+        let before = questions.count
+        questions.removeAll { $0.isCompleted && $0.createdAt < threshold }
+        let removed = before - questions.count
+        if removed > 0 {
+            print("[QuestionStore] 自動削除: 完了済み古い質問を \(removed) 件削除しました")
+        }
+    }
+
+    // MARK: - Firestore データ変換
+
+    private func saveQuestionToFirestore(_ question: Question) {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        db.collection("questions").document(question.id.uuidString)
+            .setData(firestoreData(for: question, uid: uid))
+    }
+
+    private func updateAnswerInFirestore(questionId: UUID, memberId: UUID,
+                                         value: String, answeredAt: Date) {
+        let prefix = "answers.\(memberId.uuidString)"
+        db.collection("questions").document(questionId.uuidString).updateData([
+            "\(prefix).value":      value,
+            "\(prefix).answeredAt": Timestamp(date: answeredAt)
+        ])
+    }
+
+    private func firestoreData(for question: Question, uid: String) -> [String: Any] {
+        var answersDict: [String: Any] = [:]
+        for a in question.answers {
+            answersDict[a.memberId.uuidString] = [
+                "value":      a.value,
+                "answeredAt": a.answeredAt.map { Timestamp(date: $0) } as Any
+            ]
+        }
+        return [
+            "text":      question.text,
+            "groupId":   question.groupId?.uuidString as Any,
+            "choices":   question.choices,
+            "createdAt": Timestamp(date: question.createdAt),
+            "createdBy": uid,
+            "answers":   answersDict
+        ]
+    }
+
+    private func questionFromFirestore(_ doc: QueryDocumentSnapshot) -> Question? {
+        let data = doc.data()
+        guard let id   = UUID(uuidString: doc.documentID),
+              let text = data["text"] as? String,
+              let answersDict = data["answers"] as? [String: Any] else { return nil }
+
+        let groupId   = (data["groupId"] as? String).flatMap { UUID(uuidString: $0) }
+        let choices   = data["choices"] as? [String] ?? ["yes", "no"]
+        let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+
+        let answers: [Answer] = answersDict.compactMap { key, val in
+            guard let memberId = UUID(uuidString: key),
+                  let valDict  = val as? [String: Any],
+                  let value    = valDict["value"] as? String else { return nil }
+            let answeredAt = (valDict["answeredAt"] as? Timestamp)?.dateValue()
+            return Answer(memberId: memberId, value: value, answeredAt: answeredAt)
+        }
+
+        return Question(id: id, text: text, groupId: groupId, answers: answers,
+                        createdAt: createdAt, choices: choices)
+    }
+
+    // MARK: - ローカル永続化
 
     private func save() {
         if let data = try? JSONEncoder().encode(questions) {

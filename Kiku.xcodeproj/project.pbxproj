@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		9A76AE292FC7E58C00A7285A /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 9A76AE282FC7E58C00A7285A /* FirebaseAuth */; };
+		9A76AE2B2FC7E58C00A7285A /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 9A76AE2A2FC7E58C00A7285A /* FirebaseFirestore */; };
+		9A76AE2D2FC7E58C00A7285A /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 9A76AE2C2FC7E58C00A7285A /* FirebaseMessaging */; };
 		CC001001001001001001AA12 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC001001001001001001AA10 /* WidgetKit.framework */; };
 		CC001001001001001001AA13 /* ActivityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC001001001001001001AA11 /* ActivityKit.framework */; };
 		CC001001001001001001AA14 /* ActivityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC001001001001001001AA11 /* ActivityKit.framework */; };
@@ -80,6 +83,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				CC001001001001001001AA14 /* ActivityKit.framework in Frameworks */,
+				9A76AE2B2FC7E58C00A7285A /* FirebaseFirestore in Frameworks */,
+				9A76AE2D2FC7E58C00A7285A /* FirebaseMessaging in Frameworks */,
+				9A76AE292FC7E58C00A7285A /* FirebaseAuth in Frameworks */,
 				KSHR000000000000000041 /* KikuShared in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -158,6 +164,9 @@
 			name = Kiku;
 			packageProductDependencies = (
 				KSHR000000000000000042 /* KikuShared */,
+				9A76AE282FC7E58C00A7285A /* FirebaseAuth */,
+				9A76AE2A2FC7E58C00A7285A /* FirebaseFirestore */,
+				9A76AE2C2FC7E58C00A7285A /* FirebaseMessaging */,
 			);
 			productName = Kiku;
 			productReference = AA000001000000000000001A /* Kiku.app */;
@@ -238,6 +247,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				KSHR000000000000000040 /* XCLocalSwiftPackageReference "KikuShared" */,
+				9A76AE272FC7E58C00A7285A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = AA000001000000000000001C /* Products */;
@@ -445,7 +455,11 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleURLTypes = "[{CFBundleURLSchemes = [kiku];}]";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "カレンダーにメッセージを予定として追加するために使用します";
+				INFOPLIST_KEY_NSCameraUsageDescription = "QRコードを読み取って友達を追加するために使用します";
+				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "リマインダーにメッセージをタスクとして追加するために使用します";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				INFOPLIST_KEY_NSUserActivityTypes = "[INSendMessageIntent]";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -475,7 +489,11 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleURLTypes = "[{CFBundleURLSchemes = [kiku];}]";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "カレンダーにメッセージを予定として追加するために使用します";
+				INFOPLIST_KEY_NSCameraUsageDescription = "QRコードを読み取って友達を追加するために使用します";
+				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "リマインダーにメッセージをタスクとして追加するために使用します";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				INFOPLIST_KEY_NSUserActivityTypes = "[INSendMessageIntent]";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -639,7 +657,33 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		9A76AE272FC7E58C00A7285A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.14.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
+		9A76AE282FC7E58C00A7285A /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9A76AE272FC7E58C00A7285A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		9A76AE2A2FC7E58C00A7285A /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9A76AE272FC7E58C00A7285A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+		9A76AE2C2FC7E58C00A7285A /* FirebaseMessaging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9A76AE272FC7E58C00A7285A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseMessaging;
+		};
 		KSHR000000000000000042 /* KikuShared */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = KSHR000000000000000040 /* XCLocalSwiftPackageReference "KikuShared" */;

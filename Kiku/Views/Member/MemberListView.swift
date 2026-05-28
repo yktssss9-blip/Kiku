@@ -4,7 +4,6 @@ struct MemberListView: View {
     @EnvironmentObject private var friendStore:  FriendStore
     @EnvironmentObject private var pointStore:   PointStore
     @EnvironmentObject private var profileStore: ProfileStore
-    @State private var isShowingAddSheet = false
 
     /// 自分 + 友達をポイント降順でランク付け
     private var rankedEntries: [(rank: Int, friend: Friend, total: Int, isMe: Bool)] {
@@ -29,18 +28,6 @@ struct MemberListView: View {
         NavigationStack {
             rankingList
                 .navigationTitle("ランキング")
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button { isShowingAddSheet = true } label: {
-                            Image(systemName: "plus")
-                        }
-                    }
-                }
-                .sheet(isPresented: $isShowingAddSheet) {
-                    MemberAddView { newFriend in
-                        friendStore.add(newFriend)
-                    }
-                }
         }
     }
 
@@ -61,14 +48,6 @@ struct MemberListView: View {
                                                               outOf: rankedEntries.count),
                                isMe:         item.isMe,
                                profileImage: item.isMe ? profileStore.profileImage : nil)
-                }
-                .onDelete { indexSet in
-                    // 自分の行は削除対象から除外
-                    let ids = indexSet.compactMap { i -> UUID? in
-                        let entry = rankedEntries[i]
-                        return entry.isMe ? nil : entry.friend.id
-                    }
-                    friendStore.friends.removeAll { ids.contains($0.id) }
                 }
             }
         }
@@ -237,9 +216,9 @@ private struct RankingRow: View {
 
     private func tierColor(_ tier: PointTier) -> Color {
         switch tier {
-        case .fast:   return .orange
-        case .normal: return .blue
-        case .late:   return .secondary
+        case .fast:                    return .orange
+        case .normal:                  return .blue
+        case .late, .senderFast, .senderNormal: return .secondary
         }
     }
 

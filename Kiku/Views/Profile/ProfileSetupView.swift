@@ -4,14 +4,20 @@ import PhotosUI
 struct ProfileSetupView: View {
     @ObservedObject var store: ProfileStore
 
-    @State private var name             = ""
-    @State private var selectedItem:    PhotosPickerItem? = nil
-    @State private var selectedData:    Data?             = nil
+    @State private var name          = ""
+    @State private var username      = ""
+    @State private var selectedItem: PhotosPickerItem? = nil
+    @State private var selectedData: Data?             = nil
+    @State private var isSubmitting  = false
+    @State private var errorMessage  = ""
 
     var canProceed: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
             && name.count <= 10
+            && !username.trimmingCharacters(in: .whitespaces).isEmpty
+            && username.count <= 20
             && selectedData != nil
+            && !isSubmitting
     }
 
     var body: some View {
@@ -54,8 +60,6 @@ struct ProfileSetupView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-
-                    // 選択済みのときは右下に編集バッジ
                     if selectedData != nil {
                         Image(systemName: "pencil.circle.fill")
                             .font(.title3)
@@ -90,34 +94,85 @@ struct ProfileSetupView: View {
                     .autocorrectionDisabled()
             }
             .padding(.horizontal, 24)
+            .padding(.bottom, 12)
+
+            // ── ユーザー名入力 ──
+            VStack(alignment: .leading, spacing: 8) {
+                Text("ユーザー名（友達検索に使います）")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
+
+                HStack {
+                    Text("@")
+                        .foregroundStyle(.secondary)
+                    TextField("例: yukichi", text: $username)
+                        .autocorrectionDisabled()
+                        .autocapitalization(.none)
+                }
+                .font(.body)
+                .padding()
+                .background(Color(UIColor.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .padding(.horizontal, 24)
             .padding(.bottom, 8)
 
-            Text("名前と写真を設定してください")
-                .font(.caption)
-                .foregroundStyle(canProceed ? .clear : .secondary)
-                .padding(.bottom, 16)
+            if !errorMessage.isEmpty {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .padding(.bottom, 8)
+            } else {
+                Text("名前・ユーザー名・写真を設定してください")
+                    .font(.caption)
+                    .foregroundStyle(canProceed ? .clear : .secondary)
+                    .padding(.bottom, 8)
+            }
 
             Spacer()
 
             // ── はじめるボタン ──
             Button {
-                store.name      = name.trimmingCharacters(in: .whitespaces)
-                store.photoData = selectedData
-                store.iconMode  = .photo
-                store.emoji     = "👤"   // フォールバック用
+                Task { await submit() }
             } label: {
-                Text("はじめる")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(canProceed ? Color.blue : Color.gray)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                if isSubmitting {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.gray)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                } else {
+                    Text("はじめる")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(canProceed ? Color.blue : Color.gray)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                }
             }
             .disabled(!canProceed)
             .padding(.horizontal, 24)
             .padding(.bottom, 40)
         }
+    }
+
+    private func submit() async {
+        isSubmitting = true
+        errorMessage = ""
+        defer { isSubmitting = false }
+
+        // ユーザー名をFirestoreに登録（一意性チェック込み）
+        if let error = await store.setUsername(username) {
+            errorMessage = error
+            return
+        }
+
+        store.name      = name.trimmingCharacters(in: .whitespaces)
+        store.photoData = selectedData
+        store.iconMode  = .photo
+        store.emoji     = "👤"
     }
 }
 

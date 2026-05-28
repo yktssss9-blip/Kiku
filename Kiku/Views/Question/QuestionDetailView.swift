@@ -210,9 +210,11 @@ struct QuestionDetailView: View {
 
     private func tierColor(_ tier: PointTier) -> Color {
         switch tier {
-        case .fast:   return .orange
-        case .normal: return .blue
-        case .late:   return .secondary
+        case .fast:         return .orange
+        case .normal:       return .blue
+        case .late:         return .secondary
+        case .senderFast:   return .orange
+        case .senderNormal: return .blue
         }
     }
 
@@ -231,8 +233,14 @@ struct QuestionDetailView: View {
         } else if value.hasPrefix("no:") {
             let text = String(value.dropFirst(3))
             return badgePill("✕ \(text)", bg: Color.red.opacity(0.08), fg: .red)
+        } else if value.hasPrefix("star:") {
+            let n = Int(value.dropFirst(5)) ?? 0
+            let stars = String(repeating: "★", count: n) + String(repeating: "☆", count: 5 - n)
+            return badgePill(stars, bg: Color.orange.opacity(0.12), fg: .orange)
+        } else if value.hasPrefix("emoji:") {
+            let e = String(value.dropFirst(6))
+            return badgePill(e, bg: Color.yellow.opacity(0.12), fg: .primary)
         } else {
-            // レガシーな自由記述値
             return badgePill("💬 \(value)", bg: Color.purple.opacity(0.12), fg: .purple)
         }
     }

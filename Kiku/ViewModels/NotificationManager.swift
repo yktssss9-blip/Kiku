@@ -1,4 +1,6 @@
 import UserNotifications
+import Intents
+import UIKit
 import Foundation
 import AudioToolbox
 
@@ -58,10 +60,11 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         choices:      [AnswerChoice] = [.yes, .no]
     ) {
         // 送信者プロフィールを App Group UserDefaults から読み込む
-        let appGroup      = UserDefaults(suiteName: "group.com.yukichi.kiku")
-        let senderName     = appGroup?.string(forKey: "kiku.profile.name")     ?? "きく"
-        let senderEmoji    = appGroup?.string(forKey: "kiku.profile.emoji")    ?? "👤"
-        let senderIconMode = appGroup?.string(forKey: "kiku.profile.iconMode") ?? "emoji"
+        let appGroup        = UserDefaults(suiteName: "group.com.yukichi.kiku")
+        let senderName      = appGroup?.string(forKey: "kiku.profile.name")     ?? "きく"
+        let senderEmoji     = appGroup?.string(forKey: "kiku.profile.emoji")    ?? "👤"
+        let senderIconMode  = appGroup?.string(forKey: "kiku.profile.iconMode") ?? "emoji"
+        let senderPhotoData = appGroup?.data(forKey: "kiku.profile.photo")
 
         let content = UNMutableNotificationContent()
         content.title               = "\(senderEmoji) \(senderName)さんから質問が届きました"
@@ -95,8 +98,68 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
             let trigger    = UNTimeIntervalNotificationTrigger(timeInterval: 0.5, repeats: false)
             let identifier = "kiku-\(questionId.uuidString)-\(memberId.uuidString)"
-            let request    = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
-            UNUserNotificationCenter.current().add(request)
+
+            Task { @MainActor in
+                let avatarImage = Self.makeSenderImage(
+                    iconMode: senderIconMode,
+                    emoji: senderEmoji,
+                    photoData: senderPhotoData
+                )
+                guard let avatarImage, let avatarData = avatarImage.pngData() else {
+                    UNUserNotificationCenter.current().add(
+                        UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+                    )
+                    return
+                }
+
+                let handle = INPersonHandle(value: senderName, type: .unknown)
+                let sender = INPerson(
+                    personHandle: handle,
+                    nameComponents: nil,
+                    displayName: "\(senderEmoji) \(senderName)",
+                    image: INImage(imageData: avatarData),
+                    contactIdentifier: nil,
+                    customIdentifier: nil
+                )
+                let intent = INSendMessageIntent(
+                    recipients: nil,
+                    outgoingMessageType: .outgoingMessageText,
+                    content: questionText,
+                    speakableGroupName: nil,
+                    conversationIdentifier: senderName,
+                    serviceName: "きく",
+                    sender: sender,
+                    attachments: nil
+                )
+                let interaction = INInteraction(intent: intent, response: nil)
+                interaction.direction = .incoming
+                try? await interaction.donate()
+
+                let finalContent = (try? content.updating(from: intent)) ?? content
+                UNUserNotificationCenter.current().add(
+                    UNNotificationRequest(identifier: identifier, content: finalContent, trigger: trigger)
+                )
+            }
+        }
+    }
+
+    // MARK: - 送信者アバター生成
+
+    @MainActor
+    private static func makeSenderImage(iconMode: String, emoji: String, photoData: Data?) -> UIImage? {
+        if iconMode == "photo", let data = photoData, let image = UIImage(data: data) {
+            return image
+        }
+        let size: CGFloat = 60
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: size, height: size))
+        return renderer.image { _ in
+            let attrs: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: size * 0.75)]
+            let str = emoji as NSString
+            let textSize = str.size(withAttributes: attrs)
+            str.draw(
+                at: CGPoint(x: (size - textSize.width) / 2, y: (size - textSize.height) / 2),
+                withAttributes: attrs
+            )
         }
     }
 
@@ -127,11 +190,26 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
             onAnswer?(questionId, memberId, "no")
 
         case AnswerChoice.time.actionId, AnswerChoice.freeText.actionId:
-            // テキスト入力アクション
             if let textResponse = response as? UNTextInputNotificationResponse {
                 let text = textResponse.userText.trimmingCharacters(in: .whitespaces)
                 if !text.isEmpty {
                     onAnswer?(questionId, memberId, text)
+                }
+            }
+
+        case AnswerChoice.star.actionId:
+            if let textResponse = response as? UNTextInputNotificationResponse {
+                let text = textResponse.userText.trimmingCharacters(in: .whitespaces)
+                if let n = Int(text), (1...5).contains(n) {
+                    onAnswer?(questionId, memberId, "star:\(n)")
+                }
+            }
+
+        case AnswerChoice.emoji.actionId:
+            if let textResponse = response as? UNTextInputNotificationResponse {
+                let text = textResponse.userText.trimmingCharacters(in: .whitespaces)
+                if !text.isEmpty {
+                    onAnswer?(questionId, memberId, "emoji:\(text)")
                 }
             }
 

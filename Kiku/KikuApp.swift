@@ -2,9 +2,41 @@ import SwiftUI
 import UserNotifications
 import Combine
 import ActivityKit
+import FirebaseCore
+import FirebaseMessaging
+import FirebaseFirestore
+import FirebaseAuth
+
+class AppDelegate: NSObject, UIApplicationDelegate, MessagingDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        FirebaseApp.configure()
+        Messaging.messaging().delegate = self
+        return true
+    }
+
+    // APNsトークンをFirebase Messagingに渡す
+    func application(_ application: UIApplication,
+                     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        Messaging.messaging().apnsToken = deviceToken
+    }
+
+    // FCMトークンが更新されたらFirestoreに保存
+    func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
+        guard let token = fcmToken,
+              let uid = Auth.auth().currentUser?.uid else { return }
+        Firestore.firestore().collection("users").document(uid)
+            .setData(["fcmToken": token], merge: true)
+        print("[FCM] トークン保存: \(token.prefix(20))...")
+    }
+}
 
 @main
 struct KikuApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
+    @StateObject private var authStore     = AuthStore()
     @StateObject private var profileStore  = ProfileStore()
     @StateObject private var friendStore   = FriendStore()
     @StateObject private var groupStore    = GroupStore()
@@ -12,14 +44,19 @@ struct KikuApp: App {
     @StateObject private var statusStore   = StatusStore()
     @StateObject private var chatStore     = ChatStore()
     @StateObject private var pointStore    = PointStore()
+    @StateObject private var templateStore = TemplateStore()
 
     @State private var answerTarget: AnswerTarget? = nil
     @State private var showLiveActivityDisabledAlert = false
 
     var body: some Scene {
         WindowGroup {
-            if profileStore.isSetupComplete {
+            if authStore.isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if profileStore.isSetupComplete {
                 ContentView()
+                    .environmentObject(authStore)
                     .environmentObject(profileStore)
                     .environmentObject(friendStore)
                     .environmentObject(groupStore)
@@ -27,11 +64,13 @@ struct KikuApp: App {
                     .environmentObject(statusStore)
                     .environmentObject(chatStore)
                     .environmentObject(pointStore)
+                    .environmentObject(templateStore)
                     .onAppear {
                         requestNotificationPermission()
                         setupNotificationHandler()
                         setupChatUnlock()
                         questionStore.pointStore = pointStore
+                        questionStore.senderMemberId = profileStore.myId
                         questionStore.applyPendingFromSharedStore()
                         checkLiveActivityAuthorization()
                         setupGroupDeletion()
@@ -74,6 +113,18 @@ struct KikuApp: App {
                     }
             } else {
                 ProfileSetupView(store: profileStore)
+            }
+        }
+        .onChange(of: authStore.user) { _, user in
+            if let user {
+                profileStore.syncFromFirestore()
+                questionStore.startListening(forUID: user.uid)
+                chatStore.startListening(forUID: user.uid)
+                pointStore.startListening(forUID: user.uid)
+            } else {
+                questionStore.stopListening()
+                chatStore.stopListening()
+                pointStore.stopListening()
             }
         }
     }
@@ -170,7 +221,12 @@ struct KikuApp: App {
     private func requestNotificationPermission() {
         UNUserNotificationCenter.current().requestAuthorization(
             options: [.alert, .sound, .badge]
-        ) { _, _ in }
+        ) { granted, _ in
+            guard granted else { return }
+            DispatchQueue.main.async {
+                UIApplication.shared.registerForRemoteNotifications()
+            }
+        }
     }
 }
 

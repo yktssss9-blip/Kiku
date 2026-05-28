@@ -40,23 +40,29 @@ struct PointTitle {
 // MARK: - ポイント獲得ティア
 
 enum PointTier: String, Codable {
-    case fast   // 60秒以内  → +20pt ⚡️
-    case normal // 60〜180秒 → +10pt 🕐
-    case late   // 180秒超   → +2pt  💬
+    case fast         // 60秒以内  → +20pt ⚡️
+    case normal       // 60〜180秒 → +10pt 🕐
+    case late         // 180秒超   → +2pt  💬
+    case senderFast   // 送信者: fast回答が来た → +5pt
+    case senderNormal // 送信者: normal回答が来た → +2pt
 
     var points: Int {
         switch self {
-        case .fast:   return 20
-        case .normal: return 10
-        case .late:   return 2
+        case .fast:         return 20
+        case .normal:       return 10
+        case .late:         return 2
+        case .senderFast:   return 5
+        case .senderNormal: return 2
         }
     }
 
     var label: String {
         switch self {
-        case .fast:   return "⚡️ 超速"
-        case .normal: return "🕐 早い"
-        case .late:   return "💬 普通"
+        case .fast:         return "⚡️ 超速"
+        case .normal:       return "🕐 早い"
+        case .late:         return "💬 普通"
+        case .senderFast:   return "🎯 速答ボーナス"
+        case .senderNormal: return "🎯 回答ボーナス"
         }
     }
 
@@ -80,4 +86,10 @@ struct PointRecord: Identifiable, Codable {
     var earnedAt:     Date = Date()
 
     var points: Int { tier.points }
+
+    init(id: UUID = UUID(), questionId: UUID, memberId: UUID,
+         questionText: String, tier: PointTier, earnedAt: Date = Date()) {
+        self.id = id; self.questionId = questionId; self.memberId = memberId
+        self.questionText = questionText; self.tier = tier; self.earnedAt = earnedAt
+    }
 }

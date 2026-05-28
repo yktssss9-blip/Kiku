@@ -102,8 +102,15 @@ struct PendingNotifCard: View {
     @State private var elapsed: TimeInterval = 0
     @State private var showTimePicker  = false
     @State private var showFreeText    = false
+    @State private var showStarPicker  = false
+    @State private var showEmojiPicker = false
     @State private var timeDate        = Date()
     @State private var freeTextInput   = ""
+
+    private static let emojiOptions = [
+        "😊","😍","🥰","😂","😭","😡","😮","🤔",
+        "👍","👎","🔥","❤️","💯","🎉","💪","🤯"
+    ]
 
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -221,6 +228,88 @@ struct PendingNotifCard: View {
             }
             .presentationDetents([.medium])
         }
+        // ── 星評価シート ──
+        .sheet(isPresented: $showStarPicker) {
+            NavigationStack {
+                VStack(spacing: 24) {
+                    Text(item.questionText)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+
+                    HStack(spacing: 16) {
+                        ForEach(1...5, id: \.self) { n in
+                            Button {
+                                onAnswer("star:\(n)")
+                                showStarPicker = false
+                            } label: {
+                                Text("★")
+                                    .font(.system(size: 48))
+                                    .foregroundStyle(.orange)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.vertical, 12)
+
+                    Text("タップした星の数で評価されます")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, 8)
+                .navigationTitle("星で評価")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("キャンセル") { showStarPicker = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+        }
+        // ── 絵文字ピッカーシート ──
+        .sheet(isPresented: $showEmojiPicker) {
+            NavigationStack {
+                VStack(spacing: 16) {
+                    Text(item.questionText)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+
+                    LazyVGrid(
+                        columns: Array(repeating: GridItem(.flexible()), count: 4),
+                        spacing: 12
+                    ) {
+                        ForEach(Self.emojiOptions, id: \.self) { emoji in
+                            Button {
+                                onAnswer("emoji:\(emoji)")
+                                showEmojiPicker = false
+                            } label: {
+                                Text(emoji)
+                                    .font(.system(size: 40))
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 64)
+                                    .background(Color(UIColor.tertiarySystemBackground))
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+                .padding(.top, 8)
+                .navigationTitle("絵文字で反応")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("キャンセル") { showEmojiPicker = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+        }
     }
 
     // MARK: - Timer Badge
@@ -259,8 +348,10 @@ struct PendingNotifCard: View {
             switch choice {
             case .yes:      onAnswer("yes")
             case .no:       onAnswer("no")
-            case .time:     showTimePicker = true
-            case .freeText: showFreeText   = true
+            case .time:     showTimePicker  = true
+            case .freeText: showFreeText    = true
+            case .star:     showStarPicker  = true
+            case .emoji:    showEmojiPicker = true
             }
         } label: {
             HStack(spacing: 6) {
@@ -274,6 +365,12 @@ struct PendingNotifCard: View {
                     Text("時刻").font(.body).fontWeight(.semibold)
                 case .freeText:
                     Text("・・・").font(.body).fontWeight(.bold)
+                case .star:
+                    Text("☆").font(.title2).fontWeight(.bold)
+                    Text("星評価").font(.body).fontWeight(.semibold)
+                case .emoji:
+                    Text("😊").font(.title2)
+                    Text("絵文字").font(.body).fontWeight(.semibold)
                 }
             }
             .foregroundStyle(choice.tintColor)

@@ -5,8 +5,9 @@
 グループ向けの Yes/No 質問アプリ。主催者が質問を作成し、メンバーが通知・Live Activity・アプリ内 UI で回答する iOS アプリ。
 
 - **プラットフォーム**: iOS 17+ / SwiftUI / Swift 5.9
-- **バックエンド**: なし（UserDefaults + App Group による端末内ローカル永続化）
+- **バックエンド**: Firebase（Firestore + Auth + Messaging）/ UserDefaults はローカルキャッシュとして併用
 - **Xcode プロジェクト**: `/Users/yukichi/Kiku/Kiku.xcodeproj`
+- **Firebase プロジェクト**: Shigodeki（`shigodeki-8e49a`）
 
 ---
 
@@ -145,7 +146,7 @@ questionStore.pointStore = pointStore
 
 ---
 
-## 現在の状態（2025-05-27 時点）
+## 現在の状態（2026-05-28 時点）
 
 ### 実装済み ✅
 - グループ作成・質問送信
@@ -156,12 +157,95 @@ questionStore.pointStore = pointStore
 - 友達タブのランキング表（順位バッジ・称号・ポイント合計・履歴展開）
 - プロフィール画面にポイント累計・履歴ページ
 - QuestionDetailView: 集計カード・リマインド・Live Activity送信・メンバー回答一覧（ポイントティア表示）
+- **Firebase 実装済み**:
+  - 匿名認証（Anonymous Auth）→ Apple Developer承認後に Apple Sign In へ切り替え予定
+  - ProfileStore / QuestionStore / ChatStore / PointStore → Firestore リアルタイム同期
+  - ユーザー名検索による友達追加（`/usernames/{username}` コレクション）
+  - FCMトークン登録コード（APNsキー登録後に通知送信が可能になる）
 
 ### 未実装 / 検討中 🚧
+
+#### Firebase 残作業（優先度高）
+- **Apple Sign In への切り替え**: Apple Developer Program 承認後に実施
+  1. Xcode → Signing & Capabilities → `+Capability` → Sign in with Apple を追加
+  2. Firebase Console → Authentication → Apple を有効化
+  3. `AuthStore.swift` に Apple Sign In 実装を追加（`ASAuthorizationAppleIDProvider` + `OAuthProvider.appleCredential`）
+  4. `LoginView.swift` を作成して `SignInWithAppleButton` を配置
+  5. `KikuApp.swift` の `WindowGroup` で `authStore.user == nil` のとき `LoginView` を表示
+
+- **FCM プッシュ通知（他ユーザーへの通知）**: Apple Developer 承認 + Firebase Blaze プランへのアップグレードが必要
+  1. developer.apple.com → Keys → Apple Push Notifications service (APNs) キーを作成・ダウンロード
+  2. Firebase Console → プロジェクト設定 → Cloud Messaging → APNs認証キー（`.p8`）をアップロード
+  3. Firebase Blaze プランにアップグレード（Cloud Functions を使うため）
+  4. Cloud Functions で Firestore トリガーを実装:
+     - `/questions/{questionId}` に新規ドキュメント作成 → 宛先ユーザーの `fcmToken` を取得して通知送信
+  5. FCMトークンは `/users/{uid}` の `fcmToken` フィールドにすでに保存済み
+
+- **GroupStore → Firestore 移行**: 現在はローカルのまま。グループをFirestoreに保存してメンバー間で共有できるようにする
+
 - **時間回答機能**: 質問タイプを「時間」にして回答時に時刻ピッカー表示
 - **絵文字リアクション**: チャットや質問への絵文字スタンプ
 - **回答選択肢の拡張**: Yes/No 以外（感情・温度計など）の回答タイプ
 - **QuestionDetailView のデザイン刷新**: アイコンが動くフローティング UI を一度実装したが **ユーザーの要望でリバート済み**。別アプローチで再検討予定。
+
+---
+
+## Firebase 実装詳細
+
+### 認証フロー（KikuApp.swift）
+
+```swift
+// 起動時の表示ロジック
+authStore.isLoading → ProgressView
+authStore.user == nil → （将来）LoginView
+profileStore.isSetupComplete == false → ProfileSetupView
+上記以外 → ContentView
+
+// 認証完了時に各Storeのリスナーを起動
+.onChange(of: authStore.user) { _, user in
+    if let user {
+        profileStore.syncFromFirestore()
+        questionStore.startListening(forUID: user.uid)
+        chatStore.startListening(forUID: user.uid)
+        pointStore.startListening(forUID: user.uid)
+    }
+}
+```
+
+### Firestoreコレクション構造
+
+```
+/users/{uid}
+  name, emoji, username, localId, fcmToken, updatedAt
+
+/usernames/{username}
+  uid   ← ユーザー名の一意性保証・検索用
+
+/questions/{questionId}
+  text, groupId, choices, createdAt, createdBy
+  answers: { "{memberId-uuid}": { value, answeredAt } }
+
+/chats/{questionId}
+  questionText, memberAnswers, createdAt, createdBy
+  messages: [ { id, text, senderId, channel, sentAt, ... } ]
+
+/users/{uid}/points/{recordId}
+  questionId, memberId, questionText, tier, earnedAt
+```
+
+### Storeとリスナーの対応
+
+| Store | リスナー条件 | Firestoreパス |
+|---|---|---|
+| QuestionStore | `createdBy == uid` | `/questions` |
+| ChatStore | `createdBy == uid` | `/chats` |
+| PointStore | `earnedAt > 7日前` | `/users/{uid}/points` |
+
+### よくある落とし穴（Firebase）
+
+- **`isUpdatingFromFirestore` フラグ**: Firestoreからの更新時に `didSet { save() }` が走って二重書き込みになるのを防いでいる。各Storeに実装済み。
+- **匿名認証のUID**: アプリを削除して再インストールすると新しいUIDが発行される。Apple Sign In切り替え後はデータ引き継ぎ処理が必要。
+- **FCMトークン保存タイミング**: `messaging(_:didReceiveRegistrationToken:)` はサインイン前に呼ばれる場合があるため、`Auth.auth().currentUser?.uid` が nil のときは保存されない。サインイン後に `Messaging.messaging().token(completion:)` で再取得して保存する処理が必要になる場合がある。
 
 ---
 

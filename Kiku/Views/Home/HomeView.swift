@@ -18,10 +18,34 @@ struct HomeView: View {
         feedQuestions.filter { $0.summary().pending == 0 }
     }
 
+    private func isSent(_ question: Question) -> Bool {
+        !question.answers.contains { $0.memberId == profileStore.myId }
+    }
+
+    private var sentPendingQuestions: [Question] {
+        pendingQuestions.filter { isSent($0) }
+    }
+
+    private var receivedPendingQuestions: [Question] {
+        pendingQuestions.filter { !isSent($0) }
+    }
+
+    private var sentCompletedQuestions: [Question] {
+        completedQuestions.filter { isSent($0) }
+    }
+
+    private var receivedCompletedQuestions: [Question] {
+        completedQuestions.filter { !isSent($0) }
+    }
+
     @State private var questionToDelete: Question? = nil
     @State private var showDeleteQuestionAlert = false
-    @State private var isPendingExpanded   = false
-    @State private var isCompletedExpanded = false
+    @State private var isPendingExpanded         = false
+    @State private var isCompletedExpanded       = false
+    @State private var isPendingSentExpanded     = true
+    @State private var isPendingReceivedExpanded = true
+    @State private var isCompletedSentExpanded     = true
+    @State private var isCompletedReceivedExpanded = true
 
     // グループ管理
     @State private var isGroupsExpanded    = true
@@ -41,24 +65,30 @@ struct HomeView: View {
 
                     // ─── 未回答ありセクション ───
                     if !pendingQuestions.isEmpty {
-                        feedSection(
+                        feedSectionWithSubs(
                             icon: "circle.fill",
                             iconColor: .orange,
                             title: "未回答あり",
-                            questions: pendingQuestions,
-                            isExpanded: $isPendingExpanded
+                            sentQuestions: sentPendingQuestions,
+                            receivedQuestions: receivedPendingQuestions,
+                            isExpanded: $isPendingExpanded,
+                            isSentExpanded: $isPendingSentExpanded,
+                            isReceivedExpanded: $isPendingReceivedExpanded
                         )
                         .padding(.horizontal, 16)
                     }
 
                     // ─── 完了セクション ───
                     if !completedQuestions.isEmpty {
-                        feedSection(
+                        feedSectionWithSubs(
                             icon: "checkmark.circle.fill",
                             iconColor: .green,
                             title: "完了",
-                            questions: completedQuestions,
-                            isExpanded: $isCompletedExpanded
+                            sentQuestions: sentCompletedQuestions,
+                            receivedQuestions: receivedCompletedQuestions,
+                            isExpanded: $isCompletedExpanded,
+                            isSentExpanded: $isCompletedSentExpanded,
+                            isReceivedExpanded: $isCompletedReceivedExpanded
                         )
                         .padding(.horizontal, 16)
                     }
@@ -87,6 +117,17 @@ struct HomeView: View {
             .background(Color(UIColor.systemGroupedBackground))
             .navigationTitle("シゴでき")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        profileStore.isStopTimeActive.toggle()
+                    } label: {
+                        Image(systemName: profileStore.isStopTimeActive ? "pause.circle.fill" : "pause.circle")
+                            .foregroundStyle(profileStore.isStopTimeActive ? Color.orange : Color.secondary)
+                            .imageScale(.large)
+                    }
+                }
+            }
         }
         // 質問削除アラート
         .alert("質問を削除しますか？", isPresented: $showDeleteQuestionAlert, presenting: questionToDelete) { q in
@@ -259,15 +300,19 @@ struct HomeView: View {
     // MARK: - Section Builder
 
     @ViewBuilder
-    private func feedSection(
+    private func feedSectionWithSubs(
         icon: String,
         iconColor: Color,
         title: String,
-        questions: [Question],
-        isExpanded: Binding<Bool>
+        sentQuestions: [Question],
+        receivedQuestions: [Question],
+        isExpanded: Binding<Bool>,
+        isSentExpanded: Binding<Bool>,
+        isReceivedExpanded: Binding<Bool>
     ) -> some View {
+        let total = sentQuestions.count + receivedQuestions.count
         VStack(spacing: 10) {
-            // セクションヘッダー
+            // 外側ヘッダー
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     isExpanded.wrappedValue.toggle()
@@ -283,7 +328,7 @@ struct HomeView: View {
                         .fontWeight(.bold)
                         .foregroundStyle(.primary)
 
-                    Text("\(questions.count)")
+                    Text("\(total)")
                         .font(.caption)
                         .fontWeight(.bold)
                         .foregroundStyle(iconColor)
@@ -302,6 +347,77 @@ struct HomeView: View {
             }
             .buttonStyle(.plain)
 
+            // サブセクション
+            if isExpanded.wrappedValue {
+                VStack(spacing: 12) {
+                    if !sentQuestions.isEmpty {
+                        subFeedSection(
+                            title: "送信した質問",
+                            icon: "paperplane.fill",
+                            iconColor: .blue,
+                            questions: sentQuestions,
+                            isExpanded: isSentExpanded
+                        )
+                    }
+                    if !receivedQuestions.isEmpty {
+                        subFeedSection(
+                            title: "受信した質問",
+                            icon: "tray.and.arrow.down.fill",
+                            iconColor: .purple,
+                            questions: receivedQuestions,
+                            isExpanded: isReceivedExpanded
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func subFeedSection(
+        title: String,
+        icon: String,
+        iconColor: Color,
+        questions: [Question],
+        isExpanded: Binding<Bool>
+    ) -> some View {
+        VStack(spacing: 8) {
+            // サブヘッダー
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isExpanded.wrappedValue.toggle()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: icon)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(iconColor)
+
+                    Text(title)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.primary)
+
+                    Text("\(questions.count)")
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .foregroundStyle(iconColor)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(iconColor.opacity(0.12))
+                        .clipShape(Capsule())
+
+                    Spacer()
+
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isExpanded.wrappedValue ? 0 : -90))
+                }
+                .padding(.leading, 10)
+            }
+            .buttonStyle(.plain)
+
             // カード一覧
             if isExpanded.wrappedValue {
                 VStack(spacing: 8) {
@@ -312,6 +428,7 @@ struct HomeView: View {
                         )
                         .environmentObject(questionStore)
                         .environmentObject(groupStore)
+                        .padding(.leading, 10)
                         .contextMenu {
                             Button(role: .destructive) {
                                 questionToDelete = question
