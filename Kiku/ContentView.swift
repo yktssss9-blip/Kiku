@@ -61,8 +61,10 @@ struct SettingsView: View {
     @EnvironmentObject private var profileStore: ProfileStore
     @EnvironmentObject private var pointStore: PointStore
     @EnvironmentObject private var friendStore: FriendStore
+    @EnvironmentObject private var purchaseStore: PurchaseStore
     @AppStorage("kiku.isDark") private var isDark: Bool = true
     @State private var isEditingProfile = false
+    @State private var showPaywall = false
     @State private var notifStatus: UNAuthorizationStatus = .notDetermined
     @State private var liveActivityEnabled: Bool = true
     @State private var isFriendsExpanded = false
@@ -119,6 +121,57 @@ struct SettingsView: View {
                 }
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+
+                // Proプラン
+                Section {
+                    Button {
+                        showPaywall = true
+                    } label: {
+                        HStack(spacing: 14) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [Color(red: 1.0, green: 0.75, blue: 0.0),
+                                                     Color(red: 1.0, green: 0.55, blue: 0.0)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .frame(width: 36, height: 36)
+                                Text("👑")
+                                    .font(.system(size: 18))
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(purchaseStore.isPro ? "Shigodeki Pro" : "Proプランへアップグレード")
+                                    .font(.body)
+                                    .foregroundStyle(.primary)
+                                Text(purchaseStore.isPro ? "ご利用中です" : "すべての機能をフル活用しよう")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            if purchaseStore.isPro {
+                                Text("利用中")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.orange)
+                                    .clipShape(Capsule())
+                            } else {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .buttonStyle(.plain)
+                }
 
                 // 友達
                 Section {
@@ -331,6 +384,10 @@ struct SettingsView: View {
             .sheet(isPresented: $isEditingProfile) {
                 ProfileSettingsView()
                     .environmentObject(profileStore)
+            }
+            .sheet(isPresented: $showPaywall) {
+                PaywallView()
+                    .environmentObject(purchaseStore)
             }
             .sheet(isPresented: $isAddingFriend) {
                 MemberAddView { newFriend in
