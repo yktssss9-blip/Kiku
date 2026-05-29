@@ -33,6 +33,8 @@ struct ProfileSettingsView: View {
     @State private var selectedImage: UIImage?      = nil
     @State private var showDeletePhotoConfirm       = false
     @State private var showSavedToast               = false
+    @State private var activeHourStart   = 9
+    @State private var activeHourEnd     = 12
 
     var hasChanges: Bool {
         name != store.name
@@ -66,6 +68,46 @@ struct ProfileSettingsView: View {
                     .padding(.vertical, 12)
                 }
                 .listRowBackground(Color.clear)
+
+                // 返信しやすい時間帯
+                Section {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(ProfileStore.activeHourPresets, id: \.start) { preset in
+                                let isSelected = preset.start == activeHourStart
+                                Button {
+                                    activeHourStart = preset.start
+                                    activeHourEnd   = preset.end
+                                } label: {
+                                    VStack(spacing: 4) {
+                                        Text(preset.emoji).font(.title3)
+                                        Text(preset.label)
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(isSelected ? .blue : .primary)
+                                        Text("\(preset.start)〜\(preset.end == 24 ? 0 : preset.end)時")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .frame(width: 72)
+                                    .padding(.vertical, 10)
+                                    .background(isSelected ? Color.blue.opacity(0.12) : Color(UIColor.tertiarySystemBackground))
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.vertical, 6)
+                    }
+                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 0))
+                } header: {
+                    Text("返信しやすい時間帯")
+                } footer: {
+                    Text("友達があなたへの質問を送るベストタイムをインサイトで確認できます")
+                }
 
                 // 名前
                 Section("名前") {
@@ -160,9 +202,11 @@ struct ProfileSettingsView: View {
                 }
             }
             .onAppear {
-                name          = store.name
-                selectedEmoji = store.emoji
-                iconType      = IconType(store.iconMode)
+                name            = store.name
+                selectedEmoji   = store.emoji
+                iconType        = IconType(store.iconMode)
+                activeHourStart = store.activeHourStart
+                activeHourEnd   = store.activeHourEnd
             }
             .onChange(of: photoItem) { newItem in
                 Task {
@@ -253,7 +297,9 @@ struct ProfileSettingsView: View {
     // MARK: - Save
 
     private func saveChanges() {
-        store.name = name.trimmingCharacters(in: .whitespaces)
+        store.name            = name.trimmingCharacters(in: .whitespaces)
+        store.activeHourStart = activeHourStart
+        store.activeHourEnd   = activeHourEnd
 
         switch iconType {
         case .emoji:

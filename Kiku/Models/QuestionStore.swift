@@ -28,23 +28,27 @@ struct Question: Identifiable, Codable {
     var answers: [Answer]
     var createdAt: Date = Date()
     var choices: [String] = ["yes", "no"]
+    var inviteToken: String = UUID().uuidString
 
     enum CodingKeys: String, CodingKey {
-        case id, text, groupId, answers, createdAt, choices
+        case id, text, groupId, answers, createdAt, choices, inviteToken
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        id        = try c.decode(UUID.self,     forKey: .id)
-        text      = try c.decode(String.self,   forKey: .text)
-        groupId   = try c.decodeIfPresent(UUID.self,    forKey: .groupId)
-        answers   = try c.decode([Answer].self, forKey: .answers)
-        createdAt = try c.decodeIfPresent(Date.self,    forKey: .createdAt) ?? Date()
-        choices   = try c.decodeIfPresent([String].self, forKey: .choices) ?? ["yes", "no"]
+        id          = try c.decode(UUID.self,     forKey: .id)
+        text        = try c.decode(String.self,   forKey: .text)
+        groupId     = try c.decodeIfPresent(UUID.self,    forKey: .groupId)
+        answers     = try c.decode([Answer].self, forKey: .answers)
+        createdAt   = try c.decodeIfPresent(Date.self,    forKey: .createdAt) ?? Date()
+        choices     = try c.decodeIfPresent([String].self, forKey: .choices) ?? ["yes", "no"]
+        inviteToken = try c.decodeIfPresent(String.self,  forKey: .inviteToken) ?? UUID().uuidString
     }
     init(id: UUID = UUID(), text: String, groupId: UUID? = nil,
-         answers: [Answer], createdAt: Date = Date(), choices: [String] = ["yes", "no"]) {
+         answers: [Answer], createdAt: Date = Date(), choices: [String] = ["yes", "no"],
+         inviteToken: String = UUID().uuidString) {
         self.id = id; self.text = text; self.groupId = groupId
         self.answers = answers; self.createdAt = createdAt; self.choices = choices
+        self.inviteToken = inviteToken
     }
 
     var answerChoices: [AnswerChoice] {
@@ -104,18 +108,20 @@ class QuestionStore: ObservableObject {
         listener = nil
     }
 
-    /// Firestoreから取得した質問をローカルにマージ（pending状態は上書きしない）
+    /// Firestoreから取得した質問をローカルにマージ（pending状態は上書きしない・招待回答は追加）
     private func mergeFromFirestore(_ docs: [QueryDocumentSnapshot]) {
         var merged = self.questions
         for doc in docs {
             guard let q = questionFromFirestore(doc) else { continue }
             if let idx = merged.firstIndex(where: { $0.id == q.id }) {
-                // 既存の質問: Firestoreの回答状態で更新（pendingは保持）
                 for fsAnswer in q.answers {
-                    if let aidx = merged[idx].answers.firstIndex(where: { $0.memberId == fsAnswer.memberId }),
-                       merged[idx].answers[aidx].value == "pending",
-                       fsAnswer.value != "pending" {
-                        merged[idx].answers[aidx] = fsAnswer
+                    if let aidx = merged[idx].answers.firstIndex(where: { $0.memberId == fsAnswer.memberId }) {
+                        if merged[idx].answers[aidx].value == "pending" && fsAnswer.value != "pending" {
+                            merged[idx].answers[aidx] = fsAnswer
+                        }
+                    } else {
+                        // 招待リンク経由で追加された回答をマージ
+                        merged[idx].answers.append(fsAnswer)
                     }
                 }
             } else {
@@ -131,7 +137,7 @@ class QuestionStore: ObservableObject {
 
     // MARK: - 質問送信
 
-    func send(text: String, to group: KikuGroup, friends: [Friend] = [], choices: [AnswerChoice] = [.yes, .no]) {
+    func send(text: String, to group: KikuGroup, friends: [Friend] = [], choices: [AnswerChoice] = [.yes, .no], reminderAfter: TimeInterval? = nil) {
         let answers  = group.memberIds.map { Answer(memberId: $0, value: "pending") }
         let question = Question(text: text, groupId: group.id, answers: answers,
                                 choices: choices.map(\.rawValue))
@@ -149,10 +155,21 @@ class QuestionStore: ObservableObject {
                 questionText: text,
                 choices:      choices
             )
+            if let seconds = reminderAfter {
+                NotificationManager.shared.scheduleAutoReminder(
+                    questionId:   question.id,
+                    memberId:     memberId,
+                    memberName:   friend?.name  ?? "メンバー",
+                    memberEmoji:  friend?.emoji ?? "👤",
+                    questionText: text,
+                    choices:      choices,
+                    afterSeconds: seconds
+                )
+            }
         }
     }
 
-    func sendToIndividuals(text: String, to friends: [Friend], choices: [AnswerChoice] = [.yes, .no]) {
+    func sendToIndividuals(text: String, to friends: [Friend], choices: [AnswerChoice] = [.yes, .no], reminderAfter: TimeInterval? = nil) {
         let answers  = friends.map { Answer(memberId: $0.id, value: "pending") }
         let question = Question(text: text, groupId: nil, answers: answers,
                                 choices: choices.map(\.rawValue))
@@ -169,6 +186,17 @@ class QuestionStore: ObservableObject {
                 questionText: text,
                 choices:      choices
             )
+            if let seconds = reminderAfter {
+                NotificationManager.shared.scheduleAutoReminder(
+                    questionId:   question.id,
+                    memberId:     friend.id,
+                    memberName:   friend.name,
+                    memberEmoji:  friend.emoji,
+                    questionText: text,
+                    choices:      choices,
+                    afterSeconds: seconds
+                )
+            }
         }
     }
 
@@ -187,6 +215,8 @@ class QuestionStore: ObservableObject {
         let now = Date()
         questions[idx].answers[aidx].value      = value
         questions[idx].answers[aidx].answeredAt = now
+
+        NotificationManager.shared.cancelAutoReminder(questionId: questionId, memberId: memberId)
 
         let question = questions[idx]
         let elapsed  = now.timeIntervalSince(question.createdAt)
@@ -219,6 +249,7 @@ class QuestionStore: ObservableObject {
                 let now     = Date()
                 questions[idx].answers[aidx].value      = value
                 questions[idx].answers[aidx].answeredAt = now
+                NotificationManager.shared.cancelAutoReminder(questionId: qid, memberId: mid)
                 let q       = questions[idx]
                 let elapsed = now.timeIntervalSince(q.createdAt)
                 pointStore?.add(questionId: qid, memberId: mid,
@@ -302,24 +333,24 @@ class QuestionStore: ObservableObject {
             ]
         }
         return [
-            "text":      question.text,
-            "groupId":   question.groupId?.uuidString as Any,
-            "choices":   question.choices,
-            "createdAt": Timestamp(date: question.createdAt),
-            "createdBy": uid,
-            "answers":   answersDict
+            "text":        question.text,
+            "groupId":     question.groupId?.uuidString as Any,
+            "choices":     question.choices,
+            "createdAt":   Timestamp(date: question.createdAt),
+            "createdBy":   uid,
+            "inviteToken": question.inviteToken,
+            "answers":     answersDict
         ]
     }
 
-    private func questionFromFirestore(_ doc: QueryDocumentSnapshot) -> Question? {
-        let data = doc.data()
-        guard let id   = UUID(uuidString: doc.documentID),
-              let text = data["text"] as? String,
+    private func questionFromData(id: UUID, data: [String: Any]) -> Question? {
+        guard let text = data["text"] as? String,
               let answersDict = data["answers"] as? [String: Any] else { return nil }
 
-        let groupId   = (data["groupId"] as? String).flatMap { UUID(uuidString: $0) }
-        let choices   = data["choices"] as? [String] ?? ["yes", "no"]
-        let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+        let groupId     = (data["groupId"] as? String).flatMap { UUID(uuidString: $0) }
+        let choices     = data["choices"] as? [String] ?? ["yes", "no"]
+        let createdAt   = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+        let inviteToken = data["inviteToken"] as? String ?? UUID().uuidString
 
         let answers: [Answer] = answersDict.compactMap { key, val in
             guard let memberId = UUID(uuidString: key),
@@ -330,7 +361,32 @@ class QuestionStore: ObservableObject {
         }
 
         return Question(id: id, text: text, groupId: groupId, answers: answers,
-                        createdAt: createdAt, choices: choices)
+                        createdAt: createdAt, choices: choices, inviteToken: inviteToken)
+    }
+
+    private func questionFromFirestore(_ doc: QueryDocumentSnapshot) -> Question? {
+        guard let id = UUID(uuidString: doc.documentID) else { return nil }
+        return questionFromData(id: id, data: doc.data())
+    }
+
+    // MARK: - 招待リンク
+
+    func fetchQuestionForInvite(questionId: UUID, token: String) async -> Question? {
+        guard let doc = try? await db.collection("questions").document(questionId.uuidString).getDocument(),
+              doc.exists,
+              let data = doc.data(),
+              let storedToken = data["inviteToken"] as? String,
+              storedToken == token else { return nil }
+        return questionFromData(id: questionId, data: data)
+    }
+
+    func submitInviteAnswer(questionId: UUID, memberId: UUID, value: String) {
+        let now = Date()
+        let prefix = "answers.\(memberId.uuidString)"
+        db.collection("questions").document(questionId.uuidString).updateData([
+            "\(prefix).value":      value,
+            "\(prefix).answeredAt": Timestamp(date: now)
+        ])
     }
 
     // MARK: - ローカル永続化

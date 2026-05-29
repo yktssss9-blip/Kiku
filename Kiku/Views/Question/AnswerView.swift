@@ -1,22 +1,41 @@
 import SwiftUI
 
+// App Store 公開後、下記の ID を実際の App Store ID に差し替えること
+private let appStoreReviewURL = URL(string: "https://apps.apple.com/jp/app/id\(appStoreID)?action=write-review")!
+private let appStoreID = "0000000000"  // ← ここを App Store ID に変更
+
 struct AnswerView: View {
     let question: Question
     let memberId: UUID
     let memberName: String
     let memberEmoji: String
+    var isInvite: Bool = false
 
     @EnvironmentObject private var questionStore: QuestionStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
 
     // MARK: - Step
 
-    private enum Step { case initial, time }
+    private enum Step { case initial, time, starComment }
     @State private var step: Step = .initial
     @State private var selectedYesNo: String = ""   // "yes" or "no"
     @State private var timeDate: Date = Date()
     @State private var answered: String? = nil
     @State private var hoveredStar: Int = 0
+    @State private var selectedStar: Int = 0
+    @State private var starCommentText: String = ""
+
+    // MARK: - Urgency Timer
+
+    @State private var elapsed: TimeInterval = 0
+    private let urgencyTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    private var currentTier: PointTier { PointTier.tier(for: elapsed) }
+
+    private var answeredCount: Int {
+        question.answers.filter { $0.value != "pending" }.count
+    }
 
     private var choices: [AnswerChoice] { question.answerChoices }
     private var hasYesNo: Bool { choices.contains(.yes) || choices.contains(.no) }
@@ -46,6 +65,15 @@ struct AnswerView: View {
                     confirmedSection
                         .padding(.bottom, 48)
                 } else {
+                    urgencyBanner
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 12)
+
+                    if answeredCount > 0 {
+                        alreadyAnsweredBadge
+                            .padding(.bottom, 12)
+                    }
+
                     switch step {
                     case .initial:
                         answersSection
@@ -55,11 +83,19 @@ struct AnswerView: View {
                         timeSection
                             .padding(.horizontal, 24)
                             .padding(.bottom, 48)
+                    case .starComment:
+                        starCommentSection
+                            .padding(.horizontal, 24)
+                            .padding(.bottom, 48)
                     }
                 }
             }
         }
         .ignoresSafeArea(edges: .top)
+        .onAppear { elapsed = Date().timeIntervalSince(question.createdAt) }
+        .onReceive(urgencyTimer) { _ in
+            elapsed = Date().timeIntervalSince(question.createdAt)
+        }
     }
 
     // MARK: - Header
@@ -67,7 +103,7 @@ struct AnswerView: View {
     private var header: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text("きく")
+                Text("シゴでき")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 HStack(spacing: 6) {
@@ -173,7 +209,9 @@ struct AnswerView: View {
             HStack(spacing: 12) {
                 ForEach(1...5, id: \.self) { n in
                     Button {
-                        submitAnswer("star:\(n)")
+                        selectedStar = n
+                        starCommentText = ""
+                        withAnimation(.spring(response: 0.3)) { step = .starComment }
                     } label: {
                         Text(n <= hoveredStar ? "★" : "☆")
                             .font(.system(size: 52))
@@ -277,6 +315,57 @@ struct AnswerView: View {
         }
     }
 
+    // MARK: - Step 2b: 星評価後コメント入力
+
+    private var starCommentSection: some View {
+        VStack(spacing: 16) {
+            HStack {
+                backButton {
+                    withAnimation(.spring(response: 0.3)) {
+                        step = .initial
+                        hoveredStar = 0
+                    }
+                }
+                Spacer()
+                Text(String(repeating: "★", count: selectedStar) + String(repeating: "☆", count: 5 - selectedStar))
+                    .font(.system(size: 28))
+                    .foregroundStyle(.orange)
+            }
+
+            Text("コメントを書いてください（任意）")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            TextField("感想・コメントを入力", text: $starCommentText, axis: .vertical)
+                .lineLimit(3...6)
+                .padding(12)
+                .background(Color(UIColor.tertiarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.orange.opacity(0.3), lineWidth: 1.5)
+                )
+
+            Button {
+                let trimmed = starCommentText.trimmingCharacters(in: .whitespaces)
+                let value = trimmed.isEmpty ? "star:\(selectedStar)" : "star:\(selectedStar):\(trimmed)"
+                submitAnswer(value)
+            } label: {
+                primaryButtonLabel(
+                    icon: "paperplane.fill",
+                    text: "この内容で送信",
+                    color: .orange
+                )
+            }
+
+            Button("コメントなしで送信") {
+                submitAnswer("star:\(selectedStar)")
+            }
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+        }
+    }
+
     // MARK: - Confirmed
 
     private var confirmedSection: some View {
@@ -288,10 +377,31 @@ struct AnswerView: View {
                 .font(.headline)
                 .foregroundStyle(.secondary)
 
+            if answered?.hasPrefix("star:") == true {
+                Button {
+                    openURL(appStoreReviewURL)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "star.fill")
+                        Text("App Store でレビューを書く")
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .background(Color.orange)
+                    .clipShape(Capsule())
+                }
+
+                Text("アプリの感想をみんなに届けよう")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Button("閉じる") { dismiss() }
                 .font(.body)
                 .foregroundStyle(.blue)
-                .padding(.top, 8)
+                .padding(.top, 4)
         }
     }
 
@@ -311,10 +421,20 @@ struct AnswerView: View {
                 .font(.system(size: 64))
                 .foregroundStyle(.blue)
         } else if v.hasPrefix("star:") {
-            let n = Int(v.dropFirst(5)) ?? 0
-            Text(String(repeating: "★", count: n) + String(repeating: "☆", count: 5 - n))
-                .font(.system(size: 40))
-                .foregroundStyle(.orange)
+            let parts = v.dropFirst(5).split(separator: ":", maxSplits: 1)
+            let n = Int(parts.first ?? "") ?? 0
+            VStack(spacing: 8) {
+                Text(String(repeating: "★", count: n) + String(repeating: "☆", count: 5 - n))
+                    .font(.system(size: 40))
+                    .foregroundStyle(.orange)
+                if parts.count > 1 {
+                    Text(String(parts[1]))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(3)
+                }
+            }
         } else if v.hasPrefix("emoji:") {
             Text(String(v.dropFirst(6)))
                 .font(.system(size: 80))
@@ -323,6 +443,121 @@ struct AnswerView: View {
                 .font(.system(size: 64))
                 .foregroundStyle(.purple)
         }
+    }
+
+    // MARK: - Urgency Banner
+
+    private var urgencyBanner: some View {
+        let tier = currentTier
+        let (icon, label, pts, accent): (String, String, String, Color) = {
+            switch tier {
+            case .fast:   return ("⚡️", "超速ボーナス中",  "+20pt", .orange)
+            case .normal: return ("🕐", "早い回答ボーナス中", "+10pt", .blue)
+            default:      return ("💬", "普通",            "+2pt",  Color(UIColor.systemGray))
+            }
+        }()
+
+        let remaining: TimeInterval? = {
+            switch tier {
+            case .fast:   return max(0, 60  - elapsed)
+            case .normal: return max(0, 180 - elapsed)
+            default:      return nil
+            }
+        }()
+
+        let progress: Double = {
+            switch tier {
+            case .fast:   return min(elapsed / 60,            1.0)
+            case .normal: return min((elapsed - 60) / 120,   1.0)
+            default:      return 1.0
+            }
+        }()
+
+        return VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Text(icon).font(.title3)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(label)
+                            .font(.subheadline)
+                            .fontWeight(.bold)
+                            .foregroundStyle(accent)
+                        Text(pts)
+                            .font(.subheadline)
+                            .fontWeight(.heavy)
+                            .foregroundStyle(accent)
+                    }
+                    if let rem = remaining {
+                        Text("残り\(Int(rem))秒")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(accent.opacity(0.8))
+                            .monospacedDigit()
+                    }
+                }
+
+                Spacer()
+
+                if let rem = remaining {
+                    ZStack {
+                        Circle()
+                            .stroke(accent.opacity(0.2), lineWidth: 3)
+                            .frame(width: 40, height: 40)
+                        Circle()
+                            .trim(from: 0, to: progress)
+                            .stroke(accent, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                            .frame(width: 40, height: 40)
+                            .rotationEffect(.degrees(-90))
+                            .animation(.linear(duration: 0.9), value: progress)
+                        Text("\(Int(rem))")
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                            .foregroundStyle(accent)
+                            .monospacedDigit()
+                    }
+                }
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(accent.opacity(0.15))
+                        .frame(height: 6)
+                    Capsule()
+                        .fill(accent)
+                        .frame(width: geo.size.width * progress, height: 6)
+                        .animation(.linear(duration: 0.9), value: progress)
+                }
+            }
+            .frame(height: 6)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(accent.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(accent.opacity(0.25), lineWidth: 1.5)
+        )
+    }
+
+    // MARK: - Already Answered Badge
+
+    private var alreadyAnsweredBadge: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "person.2.fill")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text("すでに \(answeredCount) 人が回答済み")
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color(UIColor.secondarySystemBackground))
+        .clipShape(Capsule())
     }
 
     // MARK: - Shared UI Parts
@@ -374,8 +609,11 @@ struct AnswerView: View {
             if value.hasPrefix("yes:")   { return "○ \(value.dropFirst(4))" }
             if value.hasPrefix("no:")    { return "✕ \(value.dropFirst(3))" }
             if value.hasPrefix("star:")  {
-                let n = Int(value.dropFirst(5)) ?? 0
-                return String(repeating: "★", count: n) + String(repeating: "☆", count: 5 - n)
+                let parts = value.dropFirst(5).split(separator: ":", maxSplits: 1)
+                let n = Int(parts.first ?? "") ?? 0
+                let stars = String(repeating: "★", count: n) + String(repeating: "☆", count: 5 - n)
+                if parts.count > 1 { return "\(stars) \(parts[1])" }
+                return stars
             }
             if value.hasPrefix("emoji:") { return String(value.dropFirst(6)) }
             return value
@@ -401,11 +639,24 @@ struct AnswerView: View {
         withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
             answered = value
         }
-        questionStore.submit(questionId: question.id, memberId: memberId, value: value)
-        Task {
-            await ActivityManager.shared.end(questionId: question.id, memberId: memberId)
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            await MainActor.run { dismiss() }
+        if isInvite {
+            questionStore.submitInviteAnswer(questionId: question.id, memberId: memberId, value: value)
+            Task {
+                if !value.hasPrefix("star:") {
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    await MainActor.run { dismiss() }
+                }
+            }
+        } else {
+            questionStore.submit(questionId: question.id, memberId: memberId, value: value)
+            Task {
+                await ActivityManager.shared.end(questionId: question.id, memberId: memberId)
+                // 星回答はボタン操作待ちのため自動クローズしない
+                if !value.hasPrefix("star:") {
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    await MainActor.run { dismiss() }
+                }
+            }
         }
     }
 }

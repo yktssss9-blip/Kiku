@@ -3,10 +3,12 @@ import SwiftUI
 struct GroupCreateView: View {
     @EnvironmentObject private var friendStore: FriendStore
     @EnvironmentObject private var groupStore: GroupStore
+    @EnvironmentObject private var purchaseStore: PurchaseStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var groupName = ""
     @State private var selectedIds: Set<UUID> = []
+    @State private var showPaywall = false
 
     var canCreate: Bool {
         !groupName.trimmingCharacters(in: .whitespaces).isEmpty
@@ -54,12 +56,20 @@ struct GroupCreateView: View {
             }
             .navigationTitle("グループを作成")
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showPaywall) {
+                PaywallView()
+                    .environmentObject(purchaseStore)
+            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("キャンセル") { dismiss() }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("作成する") {
+                        if !purchaseStore.isPro && groupStore.groups.count >= 3 {
+                            showPaywall = true
+                            return
+                        }
                         groupStore.create(
                             name: groupName.trimmingCharacters(in: .whitespaces),
                             memberIds: Array(selectedIds)

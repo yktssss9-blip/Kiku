@@ -241,7 +241,13 @@ struct MemberAddView: View {
     }
 
     private func addFriend(_ user: FirestoreUser) {
-        let friend = Friend(firebaseUID: user.uid, name: user.name, emoji: user.emoji)
+        let friend = Friend(
+            firebaseUID:     user.uid,
+            name:            user.name,
+            emoji:           user.emoji,
+            activeHourStart: user.activeHourStart,
+            activeHourEnd:   user.activeHourEnd
+        )
         onAdd(friend)
         dismiss()
     }

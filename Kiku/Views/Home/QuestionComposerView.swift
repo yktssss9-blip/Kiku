@@ -3,12 +3,13 @@ import SwiftUI
 // MARK: - QuestionComposerView
 
 struct QuestionComposerView: View {
-    var onSend: (String, [Friend]?, KikuGroup?, [AnswerChoice]) -> Void
+    var onSend: (String, [Friend]?, KikuGroup?, [AnswerChoice], TimeInterval?) -> Void
 
     @EnvironmentObject private var profileStore:  ProfileStore
     @EnvironmentObject private var friendStore:   FriendStore
     @EnvironmentObject private var groupStore:    GroupStore
     @EnvironmentObject private var templateStore: TemplateStore
+    @EnvironmentObject private var purchaseStore: PurchaseStore
 
     @State private var questionText:    String     = ""
     @State private var selectedFriends: [Friend]   = []
@@ -21,10 +22,9 @@ struct QuestionComposerView: View {
     @State private var isShowingTemplates:   Bool           = false
     @State private var showStopTimeAlert:    Bool           = false
     @State private var stopTimeNames:        String         = ""
-    @State private var pendingText:          String         = ""
-    @State private var pendingFriends:       [Friend]?      = nil
-    @State private var pendingGroup:         KikuGroup?     = nil
-    @State private var pendingChoices:       [AnswerChoice] = []
+    @State private var reminderSeconds:      TimeInterval?  = nil
+    @State private var isShowingReminderMenu: Bool          = false
+    @State private var showPaywall:          Bool           = false
 
     private var canSend: Bool {
         let hasText = !questionText.trimmingCharacters(in: .whitespaces).isEmpty
@@ -181,6 +181,35 @@ struct QuestionComposerView: View {
                     .padding(.vertical, 12)
                 }
 
+                // リマインダボタン
+                Button {
+                    isShowingReminderMenu = true
+                } label: {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: "bell")
+                            .font(.title2)
+                            .foregroundStyle(reminderSeconds != nil ? Color.orange : Color.secondary)
+                            .padding(10)
+                        if reminderSeconds != nil {
+                            Circle()
+                                .fill(Color.orange)
+                                .frame(width: 8, height: 8)
+                                .offset(x: 2, y: 2)
+                        }
+                    }
+                }
+                .padding(.trailing, 2)
+                .confirmationDialog("自動リマインドを設定", isPresented: $isShowingReminderMenu, titleVisibility: .visible) {
+                    if reminderSeconds != nil {
+                        Button("オフにする", role: .destructive) { reminderSeconds = nil }
+                    }
+                    Button("1時間後")  { reminderSeconds = 3600 }
+                    Button("3時間後")  { reminderSeconds = 10800 }
+                    Button("6時間後")  { reminderSeconds = 21600 }
+                    Button("12時間後") { reminderSeconds = 43200 }
+                    Button("キャンセル", role: .cancel) {}
+                }
+
                 // テンプレートボタン
                 Button {
                     isShowingTemplates = true
@@ -206,14 +235,10 @@ struct QuestionComposerView: View {
                         stopNames = []
                     }
                     if stopNames.isEmpty {
-                        onSend(trimmed, selectedFriends.isEmpty ? nil : selectedFriends, selectedGroup, choices)
+                        onSend(trimmed, selectedFriends.isEmpty ? nil : selectedFriends, selectedGroup, choices, reminderSeconds)
                         resetComposer()
                     } else {
-                        pendingText    = trimmed
-                        pendingFriends = selectedFriends.isEmpty ? nil : selectedFriends
-                        pendingGroup   = selectedGroup
-                        pendingChoices = choices
-                        stopTimeNames  = stopNames.joined(separator: "、")
+                        stopTimeNames = stopNames.joined(separator: "、")
                         showStopTimeAlert = true
                     }
                 } label: {
@@ -232,21 +257,22 @@ struct QuestionComposerView: View {
             }
             .confirmationDialog("選択肢を追加", isPresented: $isShowingChoiceMenu, titleVisibility: .visible) {
                 ForEach(AnswerChoice.allCases.filter { c in c != .freeText && !choices.contains { $0.id == c.id } }) { choice in
-                    Button(choice.menuLabel) {
-                        choices.append(choice)
+                    let isProChoice = (choice == .star || choice == .emoji)
+                    Button(choice.menuLabel + (isProChoice && !purchaseStore.isPro ? " 👑" : "")) {
+                        if isProChoice && !purchaseStore.isPro {
+                            showPaywall = true
+                        } else {
+                            choices.append(choice)
+                        }
                     }
                 }
                 Button("キャンセル", role: .cancel) {}
             }
         }
-        .alert("Stop Time 中の人がいます", isPresented: $showStopTimeAlert) {
-            Button("それでも送信する", role: .destructive) {
-                onSend(pendingText, pendingFriends, pendingGroup, pendingChoices)
-                resetComposer()
-            }
-            Button("キャンセル", role: .cancel) {}
+        .alert("送信できません", isPresented: $showStopTimeAlert) {
+            Button("OK", role: .cancel) {}
         } message: {
-            Text("\(stopTimeNames) は現在 Stop Time 中です。それでも送信しますか？")
+            Text("\(stopTimeNames) は現在 Stop Time 中のため、質問を送ることができません。")
         }
         .background(Color(UIColor.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -264,17 +290,26 @@ struct QuestionComposerView: View {
             .environmentObject(groupStore)
         }
         .sheet(isPresented: $isShowingTemplates) {
-            TemplateListSheet(
-                currentText:      questionText,
-                currentFriendIds: selectedFriends.map(\.id),
-                currentGroupId:   selectedGroup?.id,
-                currentChoices:   choices
-            ) { template in
-                applyTemplate(template)
+            if purchaseStore.isPro {
+                TemplateListSheet(
+                    currentText:      questionText,
+                    currentFriendIds: selectedFriends.map(\.id),
+                    currentGroupId:   selectedGroup?.id,
+                    currentChoices:   choices
+                ) { template in
+                    applyTemplate(template)
+                }
+                .environmentObject(templateStore)
+                .environmentObject(friendStore)
+                .environmentObject(groupStore)
+            } else {
+                PaywallView()
+                    .environmentObject(purchaseStore)
             }
-            .environmentObject(templateStore)
-            .environmentObject(friendStore)
-            .environmentObject(groupStore)
+        }
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
+                .environmentObject(purchaseStore)
         }
     }
 
@@ -283,6 +318,7 @@ struct QuestionComposerView: View {
         selectedFriends = []
         selectedGroup   = nil
         choices         = [.yes, .no]
+        reminderSeconds = nil
     }
 
     private func applyTemplate(_ template: QuestionTemplate) {
@@ -345,8 +381,9 @@ private struct DestinationPickerSheet: View {
     @Binding var selectedFriends: [Friend]
     @Binding var selectedGroup:   KikuGroup?
 
-    @EnvironmentObject private var friendStore: FriendStore
-    @EnvironmentObject private var groupStore:  GroupStore
+    @EnvironmentObject private var friendStore:   FriendStore
+    @EnvironmentObject private var groupStore:    GroupStore
+    @EnvironmentObject private var purchaseStore: PurchaseStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var isShowingGroupCreate = false
@@ -370,36 +407,18 @@ private struct DestinationPickerSheet: View {
                 if !filteredFriends.isEmpty {
                     Section("友達") {
                         ForEach(filteredFriends) { friend in
-                            let isSelected  = selectedFriends.contains { $0.id == friend.id }
-                            let isStopTime  = friendStore.isStopTime(friend)
-                            Button {
-                                if isSelected {
+                            FriendPickerRow(
+                                friend: friend,
+                                isSelected: selectedFriends.contains { $0.id == friend.id },
+                                isStopTime: friendStore.isStopTime(friend)
+                            ) {
+                                if selectedFriends.contains(where: { $0.id == friend.id }) {
                                     selectedFriends.removeAll { $0.id == friend.id }
                                 } else {
                                     selectedFriends.append(friend)
                                     selectedGroup = nil
                                 }
-                            } label: {
-                                HStack(spacing: 12) {
-                                    Text(friend.emoji).font(.title2)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(friend.name).font(.body).foregroundStyle(.primary)
-                                        if isStopTime {
-                                            Label("Stop Time 中", systemImage: "pause.circle.fill")
-                                                .font(.caption2)
-                                                .foregroundStyle(.orange)
-                                        }
-                                    }
-                                    Spacer()
-                                    if isSelected {
-                                        Image(systemName: "checkmark")
-                                            .foregroundStyle(.blue)
-                                            .fontWeight(.semibold)
-                                    }
-                                }
-                                .contentShape(Rectangle())
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -477,16 +496,52 @@ private struct DestinationPickerSheet: View {
             }
             .sheet(isPresented: $isShowingGroupCreate) {
                 GroupCreateView()
+                    .environmentObject(friendStore)
+                    .environmentObject(groupStore)
+                    .environmentObject(purchaseStore)
             }
         }
+    }
+}
+
+// MARK: - FriendPickerRow
+
+private struct FriendPickerRow: View {
+    let friend:     Friend
+    let isSelected: Bool
+    let isStopTime: Bool
+    let onTap:      () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                Text(friend.emoji).font(.title2)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(friend.name).font(.body).foregroundStyle(.primary)
+                    if isStopTime {
+                        Label("Stop Time 中", systemImage: "pause.circle.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                    }
+                }
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(.blue)
+                        .fontWeight(.semibold)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
 // MARK: - Preview
 
 #Preview {
-    QuestionComposerView { text, friends, group, choices in
-        print("送信: \(text), 選択肢: \(choices.map(\.id))")
+    QuestionComposerView { text, friends, group, choices, reminder in
+        print("送信: \(text), 選択肢: \(choices.map(\.id)), リマインド: \(String(describing: reminder))")
     }
     .environmentObject(ProfileStore())
     .environmentObject(FriendStore())

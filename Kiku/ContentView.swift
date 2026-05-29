@@ -12,7 +12,7 @@ struct ContentView: View {
     @EnvironmentObject private var chatStore:     ChatStore
 
     /// myId 宛の未回答（pending）質問数
-    private var pendingNotificationCount: Int {
+    var pendingNotificationCount: Int {
         let myId = profileStore.myId
         var count = 0
         for question in questionStore.questions {
@@ -30,11 +30,10 @@ struct ContentView: View {
                     Label("ホーム", systemImage: "house.fill")
                 }
 
-            NotificationInboxView()
+            InsightView()
                 .tabItem {
-                    Label("通知", systemImage: "bell.fill")
+                    Label("インサイト", systemImage: "chart.bar.fill")
                 }
-                .badge(pendingNotificationCount)
 
             ChatListView()
                 .tabItem {
@@ -86,32 +85,40 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
-                // プロフィールカード
+                // プロフィールカード（社員証）
                 Section {
-                    Button {
-                        isEditingProfile = true
-                    } label: {
-                        HStack(spacing: 16) {
-                            profileAvatar
-                                .frame(width: 60, height: 60)
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(profileStore.name)
-                                    .font(.headline)
-                                    .foregroundStyle(.primary)
+                    VStack(spacing: 10) {
+                        ProfileIDCard(
+                            name:         profileStore.name,
+                            emoji:        profileStore.emoji,
+                            profileImage: profileStore.profileImage,
+                            username:     profileStore.username,
+                            rank:         myRankInfo.rank,
+                            outOf:        myRankInfo.outOf,
+                            avgSpeed:     pointStore.averageSpeed(for: profileStore.myId),
+                            answerCount:  pointStore.history(for: profileStore.myId).count
+                        )
+                        Button {
+                            isEditingProfile = true
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "pencil")
                                 Text("プロフィールを編集")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
                             }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(Color(UIColor.secondarySystemBackground))
+                            .foregroundStyle(.primary)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
                         }
-                        .padding(.vertical, 4)
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
+                    .padding(.vertical, 4)
                 }
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
 
                 // 友達
                 Section {
@@ -434,22 +441,155 @@ struct SettingsView: View {
             .clipShape(Capsule())
     }
 
-    private var profileAvatar: some View {
+    private var myRankInfo: (rank: Int, outOf: Int) {
+        let myId   = profileStore.myId
+        let allIds = [myId] + friendStore.friends.map(\.id)
+        let sorted = allIds.sorted {
+            (pointStore.averageSpeed(for: $0) ?? .infinity) <
+            (pointStore.averageSpeed(for: $1) ?? .infinity)
+        }
+        let rank = (sorted.firstIndex(of: myId) ?? 0) + 1
+        return (rank, allIds.count)
+    }
+}
+
+// MARK: - ProfileIDCard
+
+private struct ProfileIDCard: View {
+    let name:         String
+    let emoji:        String
+    let profileImage: Image?
+    let username:     String
+    let rank:         Int
+    let outOf:        Int
+    let avgSpeed:     Double?
+    let answerCount:  Int
+
+    private var title: PointTitle { PointTitle(rank: rank, outOf: outOf) }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 16)
+                .fill(cardGradient)
+                .shadow(color: .black.opacity(0.18), radius: 10, y: 5)
+
+            VStack(spacing: 0) {
+                // ヘッダー
+                HStack {
+                    Text("🏢 シゴデキ株式会社")
+                        .font(.caption2)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.white.opacity(0.65))
+                    Spacer()
+                    rankBadgeView
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+
+                // メインコンテンツ
+                HStack(spacing: 14) {
+                    avatarCircle
+                        .frame(width: 72, height: 72)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(name.isEmpty ? "名前未設定" : name)
+                            .font(.title3)
+                            .fontWeight(.bold)
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+
+                        Text(title.display)
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(.white.opacity(0.2))
+                            .clipShape(Capsule())
+
+                        if !username.isEmpty {
+                            Text("@\(username)")
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.6))
+                        }
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+                .padding(.bottom, 16)
+
+                // 区切り線
+                Rectangle()
+                    .fill(.white.opacity(0.2))
+                    .frame(height: 1)
+                    .padding(.horizontal, 16)
+
+                // 統計行
+                HStack(spacing: 0) {
+                    statCell(label: "順位",   value: "\(rank)位")
+                    Rectangle().fill(.white.opacity(0.2)).frame(width: 1, height: 28)
+                    statCell(label: "平均速度", value: avgSpeed.map { String(format: "%.0f秒", $0) } ?? "–")
+                    Rectangle().fill(.white.opacity(0.2)).frame(width: 1, height: 28)
+                    statCell(label: "回答数",  value: "\(answerCount)件")
+                }
+                .padding(.vertical, 12)
+            }
+        }
+    }
+
+    private func statCell(label: String, value: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.subheadline).fontWeight(.bold).foregroundStyle(.white)
+            Text(label)
+                .font(.caption2).foregroundStyle(.white.opacity(0.65))
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var rankBadgeView: some View {
         Group {
-            if let image = profileStore.profileImage {
+            switch rank {
+            case 1: Text("🥇").font(.title3)
+            case 2: Text("🥈").font(.title3)
+            case 3: Text("🥉").font(.title3)
+            default:
+                Text("\(rank)位")
+                    .font(.caption).fontWeight(.bold).foregroundStyle(.white)
+            }
+        }
+    }
+
+    private var avatarCircle: some View {
+        Group {
+            if let image = profileImage {
                 image
                     .resizable()
                     .scaledToFill()
-                    .frame(width: 60, height: 60)
                     .clipShape(Circle())
+                    .overlay(Circle().stroke(.white.opacity(0.35), lineWidth: 2))
             } else {
-                Text(profileStore.emoji)
-                    .font(.system(size: 32))
-                    .frame(width: 60, height: 60)
-                    .background(Color(UIColor.secondarySystemBackground))
+                Text(emoji)
+                    .font(.system(size: 38))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(.white.opacity(0.15))
                     .clipShape(Circle())
+                    .overlay(Circle().stroke(.white.opacity(0.35), lineWidth: 2))
             }
         }
+    }
+
+    private var cardGradient: LinearGradient {
+        let colors: [Color]
+        switch title.color {
+        case "purple": colors = [.purple,                                    .indigo]
+        case "yellow": colors = [Color(red: 0.75, green: 0.55, blue: 0.0),  .orange]
+        case "orange": colors = [.orange,                                    Color(red: 0.8, green: 0.3, blue: 0.1)]
+        case "blue":   colors = [.blue,                                      .cyan.opacity(0.85)]
+        default:       colors = [Color(UIColor.systemGray),                  Color(UIColor.systemGray2)]
+        }
+        return LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 }
 

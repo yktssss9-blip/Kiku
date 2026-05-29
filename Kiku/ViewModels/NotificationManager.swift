@@ -51,6 +51,60 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
     // MARK: - 通知スケジュール
 
+    func scheduleAutoReminder(
+        questionId:   UUID,
+        memberId:     UUID,
+        memberName:   String,
+        memberEmoji:  String,
+        questionText: String,
+        choices:      [AnswerChoice] = [.yes, .no],
+        afterSeconds: TimeInterval
+    ) {
+        let identifier = "kiku-reminder-\(questionId.uuidString)-\(memberId.uuidString)"
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: afterSeconds, repeats: false)
+
+        let appGroup        = UserDefaults(suiteName: "group.com.yukichi.kiku")
+        let senderName      = appGroup?.string(forKey: "kiku.profile.name")     ?? "きく"
+        let senderEmoji     = appGroup?.string(forKey: "kiku.profile.emoji")    ?? "👤"
+
+        let content = UNMutableNotificationContent()
+        content.title              = "⏰ まだ回答がありません"
+        content.body               = questionText
+        content.sound              = .default
+        content.categoryIdentifier = Self.categoryId(for: choices)
+        content.interruptionLevel  = .active
+        content.userInfo           = [
+            "questionId":     questionId.uuidString,
+            "memberId":       memberId.uuidString,
+            "memberName":     memberName,
+            "memberEmoji":    memberEmoji,
+            "sentAt":         Date().timeIntervalSince1970,
+            "senderName":     senderName,
+            "senderEmoji":    senderEmoji,
+            "senderIconMode": "emoji",
+            "isReminder":     true
+        ]
+
+        let newCategory = UNNotificationCategory(
+            identifier: Self.categoryId(for: choices),
+            actions: choices.map { $0.makeNotificationAction() },
+            intentIdentifiers: [],
+            options: []
+        )
+        UNUserNotificationCenter.current().getNotificationCategories { existing in
+            var updated = existing.filter { $0.identifier != newCategory.identifier }
+            updated.insert(newCategory)
+            UNUserNotificationCenter.current().setNotificationCategories(updated)
+            let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+            UNUserNotificationCenter.current().add(request)
+        }
+    }
+
+    func cancelAutoReminder(questionId: UUID, memberId: UUID) {
+        let identifier = "kiku-reminder-\(questionId.uuidString)-\(memberId.uuidString)"
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [identifier])
+    }
+
     func scheduleQuestion(
         questionId:   UUID,
         memberId:     UUID,
@@ -106,7 +160,7 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
                     photoData: senderPhotoData
                 )
                 guard let avatarImage, let avatarData = avatarImage.pngData() else {
-                    UNUserNotificationCenter.current().add(
+                    try? await UNUserNotificationCenter.current().add(
                         UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
                     )
                     return
@@ -136,7 +190,7 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
                 try? await interaction.donate()
 
                 let finalContent = (try? content.updating(from: intent)) ?? content
-                UNUserNotificationCenter.current().add(
+                try? await UNUserNotificationCenter.current().add(
                     UNNotificationRequest(identifier: identifier, content: finalContent, trigger: trigger)
                 )
             }

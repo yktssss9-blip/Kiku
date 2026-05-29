@@ -5,47 +5,36 @@ struct HomeView: View {
     @EnvironmentObject private var friendStore:   FriendStore
     @EnvironmentObject private var groupStore:    GroupStore
     @EnvironmentObject private var profileStore:  ProfileStore
+    @EnvironmentObject private var chatStore:     ChatStore
+    @EnvironmentObject private var purchaseStore: PurchaseStore
 
+    // 自分への未回答バナー用
+    private var myPendingCount: Int {
+        let myId = profileStore.myId
+        return questionStore.questions.reduce(0) { count, q in
+            count + q.answers.filter { $0.memberId == myId && $0.value == "pending" }.count
+        }
+    }
+
+    // 最新順フィード
     private var feedQuestions: [Question] {
         questionStore.questions.sorted { $0.createdAt > $1.createdAt }
     }
 
+    // 未回答者がいる質問（最新順）
     private var pendingQuestions: [Question] {
         feedQuestions.filter { $0.summary().pending > 0 }
     }
 
+    // 全員回答済み（最新順）
     private var completedQuestions: [Question] {
         feedQuestions.filter { $0.summary().pending == 0 }
     }
 
-    private func isSent(_ question: Question) -> Bool {
-        !question.answers.contains { $0.memberId == profileStore.myId }
-    }
-
-    private var sentPendingQuestions: [Question] {
-        pendingQuestions.filter { isSent($0) }
-    }
-
-    private var receivedPendingQuestions: [Question] {
-        pendingQuestions.filter { !isSent($0) }
-    }
-
-    private var sentCompletedQuestions: [Question] {
-        completedQuestions.filter { isSent($0) }
-    }
-
-    private var receivedCompletedQuestions: [Question] {
-        completedQuestions.filter { !isSent($0) }
-    }
-
+    @State private var showPendingInbox      = false
     @State private var questionToDelete: Question? = nil
     @State private var showDeleteQuestionAlert = false
-    @State private var isPendingExpanded         = false
-    @State private var isCompletedExpanded       = false
-    @State private var isPendingSentExpanded     = true
-    @State private var isPendingReceivedExpanded = true
-    @State private var isCompletedSentExpanded     = true
-    @State private var isCompletedReceivedExpanded = true
+    @State private var isCompletedExpanded   = false
 
     // グループ管理
     @State private var isGroupsExpanded    = true
@@ -53,6 +42,8 @@ struct HomeView: View {
     @State private var groupToEdit:   KikuGroup? = nil
     @State private var groupToDelete: KikuGroup? = nil
     @State private var showDeleteGroupAlert = false
+
+    @State private var showPaywall = false
 
     var body: some View {
         NavigationStack {
@@ -63,34 +54,52 @@ struct HomeView: View {
                     QuestionComposerView(onSend: handleSend)
                         .padding(.horizontal, 16)
 
-                    // ─── 未回答ありセクション ───
-                    if !pendingQuestions.isEmpty {
-                        feedSectionWithSubs(
-                            icon: "circle.fill",
-                            iconColor: .orange,
-                            title: "未回答あり",
-                            sentQuestions: sentPendingQuestions,
-                            receivedQuestions: receivedPendingQuestions,
-                            isExpanded: $isPendingExpanded,
-                            isSentExpanded: $isPendingSentExpanded,
-                            isReceivedExpanded: $isPendingReceivedExpanded
-                        )
+                    // ─── 自分への未回答バナー ───
+                    if myPendingCount > 0 {
+                        Button {
+                            showPendingInbox = true
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "bell.badge.fill")
+                                    .font(.system(size: 16))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 36, height: 36)
+                                    .background(Color.orange)
+                                    .clipShape(Circle())
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("回答待ちの質問があります")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(.primary)
+                                    Text("\(myPendingCount)件")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .background(Color(UIColor.secondarySystemGroupedBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                        }
+                        .buttonStyle(.plain)
                         .padding(.horizontal, 16)
+                    }
+
+                    // ─── 進行中セクション ───
+                    if !pendingQuestions.isEmpty {
+                        pendingSection
+                            .padding(.horizontal, 16)
                     }
 
                     // ─── 完了セクション ───
                     if !completedQuestions.isEmpty {
-                        feedSectionWithSubs(
-                            icon: "checkmark.circle.fill",
-                            iconColor: .green,
-                            title: "完了",
-                            sentQuestions: sentCompletedQuestions,
-                            receivedQuestions: receivedCompletedQuestions,
-                            isExpanded: $isCompletedExpanded,
-                            isSentExpanded: $isCompletedSentExpanded,
-                            isReceivedExpanded: $isCompletedReceivedExpanded
-                        )
-                        .padding(.horizontal, 16)
+                        completedSection
+                            .padding(.horizontal, 16)
                     }
 
                     // ─── グループセクション ───
@@ -120,7 +129,14 @@ struct HomeView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
-                        profileStore.isStopTimeActive.toggle()
+                        if profileStore.isStopTimeActive {
+                            profileStore.isStopTimeActive = false
+                        } else if purchaseStore.isPro || !profileStore.hasUsedFreeStopTimeToday() {
+                            profileStore.isStopTimeActive = true
+                            if !purchaseStore.isPro { profileStore.recordStopTimeActivation() }
+                        } else {
+                            showPaywall = true
+                        }
                     } label: {
                         Image(systemName: profileStore.isStopTimeActive ? "pause.circle.fill" : "pause.circle")
                             .foregroundStyle(profileStore.isStopTimeActive ? Color.orange : Color.secondary)
@@ -129,50 +145,148 @@ struct HomeView: View {
                 }
             }
         }
-        // 質問削除アラート
         .alert("質問を削除しますか？", isPresented: $showDeleteQuestionAlert, presenting: questionToDelete) { q in
             Button("削除", role: .destructive) {
                 questionStore.delete(questionId: q.id)
                 questionToDelete = nil
             }
-            Button("キャンセル", role: .cancel) {
-                questionToDelete = nil
-            }
+            Button("キャンセル", role: .cancel) { questionToDelete = nil }
         } message: { q in
             Text("「\(q.text)」と回答データをすべて削除します。この操作は元に戻せません。")
         }
-        // グループ削除アラート
         .alert("グループを削除しますか？", isPresented: $showDeleteGroupAlert, presenting: groupToDelete) { g in
             Button("削除", role: .destructive) {
                 groupStore.delete(id: g.id)
                 groupToDelete = nil
             }
-            Button("キャンセル", role: .cancel) {
-                groupToDelete = nil
-            }
+            Button("キャンセル", role: .cancel) { groupToDelete = nil }
         } message: { g in
             Text("「\(g.name)」とそのグループに送信した質問・回答データをすべて削除します。この操作は元に戻せません。")
         }
-        // グループ作成シート
+        .sheet(isPresented: $showPendingInbox) {
+            NotificationInboxView()
+                .environmentObject(questionStore)
+                .environmentObject(friendStore)
+                .environmentObject(profileStore)
+        }
         .sheet(isPresented: $showGroupCreate) {
             GroupCreateView()
                 .environmentObject(friendStore)
                 .environmentObject(groupStore)
+                .environmentObject(purchaseStore)
         }
-        // グループ編集シート
         .sheet(item: $groupToEdit) { group in
             GroupEditView(group: group)
                 .environmentObject(friendStore)
                 .environmentObject(groupStore)
         }
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
+                .environmentObject(purchaseStore)
+        }
     }
 
-    // MARK: - Group Section
+    // MARK: - 進行中セクション
+
+    @ViewBuilder
+    private var pendingSection: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "clock.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.orange)
+                Text("進行中")
+                    .font(.headline)
+                    .fontWeight(.bold)
+                    .foregroundStyle(.primary)
+                Text("\(pendingQuestions.count)")
+                    .font(.caption)
+                    .fontWeight(.bold)
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(Color.orange.opacity(0.12))
+                    .clipShape(Capsule())
+                Spacer()
+            }
+
+            VStack(spacing: 8) {
+                ForEach(pendingQuestions) { question in
+                    questionCard(question)
+                }
+            }
+        }
+    }
+
+    // MARK: - 完了セクション
+
+    @ViewBuilder
+    private var completedSection: some View {
+        VStack(spacing: 10) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isCompletedExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.green)
+                    Text("完了")
+                        .font(.headline)
+                        .fontWeight(.bold)
+                        .foregroundStyle(.primary)
+                    Text("\(completedQuestions.count)")
+                        .font(.caption)
+                        .fontWeight(.bold)
+                        .foregroundStyle(.green)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(Color.green.opacity(0.12))
+                        .clipShape(Capsule())
+                    Spacer()
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isCompletedExpanded ? 0 : -90))
+                }
+            }
+            .buttonStyle(.plain)
+
+            if isCompletedExpanded {
+                VStack(spacing: 8) {
+                    ForEach(completedQuestions) { question in
+                        questionCard(question)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - 質問カード
+
+    @ViewBuilder
+    private func questionCard(_ question: Question) -> some View {
+        QuestionFeedCard(question: question, friends: friendStore.friends)
+            .environmentObject(questionStore)
+            .environmentObject(groupStore)
+            .environmentObject(profileStore)
+            .environmentObject(chatStore)
+            .contextMenu {
+                Button(role: .destructive) {
+                    questionToDelete = question
+                    showDeleteQuestionAlert = true
+                } label: {
+                    Label("質問を削除", systemImage: "trash")
+                }
+            }
+    }
+
+    // MARK: - グループセクション
 
     @ViewBuilder
     private var groupSection: some View {
         VStack(spacing: 10) {
-            // ヘッダー
             HStack(spacing: 8) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -183,12 +297,10 @@ struct HomeView: View {
                         Image(systemName: "person.3.fill")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(.indigo)
-
                         Text("グループ")
                             .font(.headline)
                             .fontWeight(.bold)
                             .foregroundStyle(.primary)
-
                         if !groupStore.groups.isEmpty {
                             Text("\(groupStore.groups.count)")
                                 .font(.caption)
@@ -199,9 +311,7 @@ struct HomeView: View {
                                 .background(Color.indigo.opacity(0.12))
                                 .clipShape(Capsule())
                         }
-
                         Spacer()
-
                         Image(systemName: "chevron.down")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(.secondary)
@@ -210,7 +320,6 @@ struct HomeView: View {
                 }
                 .buttonStyle(.plain)
 
-                // ＋ グループ作成ボタン
                 Button {
                     showGroupCreate = true
                 } label: {
@@ -223,7 +332,6 @@ struct HomeView: View {
                 }
             }
 
-            // グループ一覧
             if isGroupsExpanded {
                 if groupStore.groups.isEmpty {
                     HStack {
@@ -237,25 +345,19 @@ struct HomeView: View {
                 } else {
                     VStack(spacing: 8) {
                         ForEach(groupStore.groups) { group in
-                            Button {
-                                groupToEdit = group
-                            } label: {
-                                groupCard(group)
-                            }
-                            .buttonStyle(.plain)
-                            .contextMenu {
-                                Button {
-                                    groupToEdit = group
-                                } label: {
-                                    Label("グループを編集", systemImage: "pencil")
+                            Button { groupToEdit = group } label: { groupCard(group) }
+                                .buttonStyle(.plain)
+                                .contextMenu {
+                                    Button { groupToEdit = group } label: {
+                                        Label("グループを編集", systemImage: "pencil")
+                                    }
+                                    Button(role: .destructive) {
+                                        groupToDelete = group
+                                        showDeleteGroupAlert = true
+                                    } label: {
+                                        Label("グループを削除", systemImage: "trash")
+                                    }
                                 }
-                                Button(role: .destructive) {
-                                    groupToDelete = group
-                                    showDeleteGroupAlert = true
-                                } label: {
-                                    Label("グループを削除", systemImage: "trash")
-                                }
-                            }
                         }
                     }
                 }
@@ -265,7 +367,6 @@ struct HomeView: View {
 
     private func groupCard(_ group: KikuGroup) -> some View {
         HStack(spacing: 12) {
-            // アイコン
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color.indigo.opacity(0.12))
@@ -274,7 +375,6 @@ struct HomeView: View {
                     .font(.system(size: 16))
                     .foregroundStyle(.indigo)
             }
-
             VStack(alignment: .leading, spacing: 2) {
                 Text(group.name)
                     .font(.body)
@@ -284,9 +384,7 @@ struct HomeView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-
             Spacer()
-
             Image(systemName: "chevron.right")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.tertiary)
@@ -297,163 +395,17 @@ struct HomeView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    // MARK: - Section Builder
-
-    @ViewBuilder
-    private func feedSectionWithSubs(
-        icon: String,
-        iconColor: Color,
-        title: String,
-        sentQuestions: [Question],
-        receivedQuestions: [Question],
-        isExpanded: Binding<Bool>,
-        isSentExpanded: Binding<Bool>,
-        isReceivedExpanded: Binding<Bool>
-    ) -> some View {
-        let total = sentQuestions.count + receivedQuestions.count
-        VStack(spacing: 10) {
-            // 外側ヘッダー
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    isExpanded.wrappedValue.toggle()
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: icon)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(iconColor)
-
-                    Text(title)
-                        .font(.headline)
-                        .fontWeight(.bold)
-                        .foregroundStyle(.primary)
-
-                    Text("\(total)")
-                        .font(.caption)
-                        .fontWeight(.bold)
-                        .foregroundStyle(iconColor)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 2)
-                        .background(iconColor.opacity(0.12))
-                        .clipShape(Capsule())
-
-                    Spacer()
-
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(isExpanded.wrappedValue ? 0 : -90))
-                }
-            }
-            .buttonStyle(.plain)
-
-            // サブセクション
-            if isExpanded.wrappedValue {
-                VStack(spacing: 12) {
-                    if !sentQuestions.isEmpty {
-                        subFeedSection(
-                            title: "送信した質問",
-                            icon: "paperplane.fill",
-                            iconColor: .blue,
-                            questions: sentQuestions,
-                            isExpanded: isSentExpanded
-                        )
-                    }
-                    if !receivedQuestions.isEmpty {
-                        subFeedSection(
-                            title: "受信した質問",
-                            icon: "tray.and.arrow.down.fill",
-                            iconColor: .purple,
-                            questions: receivedQuestions,
-                            isExpanded: isReceivedExpanded
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func subFeedSection(
-        title: String,
-        icon: String,
-        iconColor: Color,
-        questions: [Question],
-        isExpanded: Binding<Bool>
-    ) -> some View {
-        VStack(spacing: 8) {
-            // サブヘッダー
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    isExpanded.wrappedValue.toggle()
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: icon)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(iconColor)
-
-                    Text(title)
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.primary)
-
-                    Text("\(questions.count)")
-                        .font(.caption2)
-                        .fontWeight(.bold)
-                        .foregroundStyle(iconColor)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(iconColor.opacity(0.12))
-                        .clipShape(Capsule())
-
-                    Spacer()
-
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(isExpanded.wrappedValue ? 0 : -90))
-                }
-                .padding(.leading, 10)
-            }
-            .buttonStyle(.plain)
-
-            // カード一覧
-            if isExpanded.wrappedValue {
-                VStack(spacing: 8) {
-                    ForEach(questions) { question in
-                        QuestionFeedCard(
-                            question: question,
-                            friends:  friendStore.friends
-                        )
-                        .environmentObject(questionStore)
-                        .environmentObject(groupStore)
-                        .padding(.leading, 10)
-                        .contextMenu {
-                            Button(role: .destructive) {
-                                questionToDelete = question
-                                showDeleteQuestionAlert = true
-                            } label: {
-                                Label("質問を削除", systemImage: "trash")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     // MARK: - 送信ロジック
 
     private func handleSend(
         _ text: String,
         _ friends: [Friend]?,
         _ group: KikuGroup?,
-        _ choices: [AnswerChoice]
+        _ choices: [AnswerChoice],
+        _ reminderAfter: TimeInterval?
     ) {
         if let targets = friends, !targets.isEmpty {
-            // 個人宛送信
-            questionStore.sendToIndividuals(text: text, to: targets, choices: choices)
+            questionStore.sendToIndividuals(text: text, to: targets, choices: choices, reminderAfter: reminderAfter)
             Task { @MainActor in
                 if let question = questionStore.questions.last {
                     for friend in targets {
@@ -467,8 +419,7 @@ struct HomeView: View {
                 }
             }
         } else if let target = group {
-            // グループ送信
-            questionStore.send(text: text, to: target, friends: friendStore.friends, choices: choices)
+            questionStore.send(text: text, to: target, friends: friendStore.friends, choices: choices, reminderAfter: reminderAfter)
             Task { @MainActor in
                 if let question = questionStore.questions.last {
                     for memberId in target.memberIds {
@@ -495,4 +446,5 @@ struct HomeView: View {
         .environmentObject(GroupStore())
         .environmentObject(ProfileStore())
         .environmentObject(ChatStore())
+        .environmentObject(PurchaseStore())
 }

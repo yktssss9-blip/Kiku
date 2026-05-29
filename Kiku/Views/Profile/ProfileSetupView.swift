@@ -4,12 +4,14 @@ import PhotosUI
 struct ProfileSetupView: View {
     @ObservedObject var store: ProfileStore
 
-    @State private var name          = ""
-    @State private var username      = ""
+    @State private var name             = ""
+    @State private var username         = ""
     @State private var selectedItem: PhotosPickerItem? = nil
     @State private var selectedData: Data?             = nil
-    @State private var isSubmitting  = false
-    @State private var errorMessage  = ""
+    @State private var isSubmitting     = false
+    @State private var errorMessage     = ""
+    @State private var activeHourStart  = 9
+    @State private var activeHourEnd    = 12
 
     var canProceed: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
@@ -118,6 +120,47 @@ struct ProfileSetupView: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 8)
 
+            // ── 返信しやすい時間帯 ──
+            VStack(alignment: .leading, spacing: 10) {
+                Text("返信しやすい時間帯")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 28)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(ProfileStore.activeHourPresets, id: \.start) { preset in
+                            let isSelected = preset.start == activeHourStart
+                            Button {
+                                activeHourStart = preset.start
+                                activeHourEnd   = preset.end
+                            } label: {
+                                VStack(spacing: 4) {
+                                    Text(preset.emoji).font(.title3)
+                                    Text(preset.label)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(isSelected ? .blue : .primary)
+                                    Text("\(preset.start)〜\(preset.end == 24 ? 0 : preset.end)時")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .frame(width: 72)
+                                .padding(.vertical, 10)
+                                .background(isSelected ? Color.blue.opacity(0.12) : Color(UIColor.secondarySystemBackground))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                }
+            }
+            .padding(.bottom, 8)
+
             if !errorMessage.isEmpty {
                 Text(errorMessage)
                     .font(.caption)
@@ -169,10 +212,12 @@ struct ProfileSetupView: View {
             return
         }
 
-        store.name      = name.trimmingCharacters(in: .whitespaces)
-        store.photoData = selectedData
-        store.iconMode  = .photo
-        store.emoji     = "👤"
+        store.name            = name.trimmingCharacters(in: .whitespaces)
+        store.photoData       = selectedData
+        store.iconMode        = .photo
+        store.emoji           = "👤"
+        store.activeHourStart = activeHourStart
+        store.activeHourEnd   = activeHourEnd
     }
 }
 

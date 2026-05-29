@@ -7,6 +7,8 @@ struct Friend: Identifiable, Codable {
     var firebaseUID: String = ""   // Firestoreユーザー（空 = 旧ローカルデータ）
     var name: String
     var emoji: String
+    var activeHourStart: Int? = nil
+    var activeHourEnd: Int?   = nil
 }
 
 // MARK: - Firestore検索結果
@@ -16,6 +18,8 @@ struct FirestoreUser {
     let name: String
     let emoji: String
     let username: String
+    let activeHourStart: Int?
+    let activeHourEnd: Int?
 }
 
 class FriendStore: ObservableObject {
@@ -110,8 +114,11 @@ class FriendStore: ObservableObject {
         guard let data = userDoc.data(),
               let name = data["name"] as? String else { return nil }
 
-        let emoji = data["emoji"] as? String ?? "👤"
-        return FirestoreUser(uid: uid, name: name, emoji: emoji, username: trimmed)
+        let emoji           = data["emoji"]           as? String ?? "👤"
+        let activeHourStart = data["activeHourStart"] as? Int
+        let activeHourEnd   = data["activeHourEnd"]   as? Int
+        return FirestoreUser(uid: uid, name: name, emoji: emoji, username: trimmed,
+                             activeHourStart: activeHourStart, activeHourEnd: activeHourEnd)
     }
 
     // MARK: - 永続化

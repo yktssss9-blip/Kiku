@@ -79,17 +79,20 @@ enum PointTier: String, Codable {
 
 struct PointRecord: Identifiable, Codable {
     var id: UUID = UUID()
-    var questionId:   UUID
-    var memberId:     UUID
-    var questionText: String
-    var tier:         PointTier
-    var earnedAt:     Date = Date()
+    var questionId:     UUID
+    var memberId:       UUID
+    var questionText:   String
+    var tier:           PointTier
+    var earnedAt:       Date = Date()
+    var elapsedSeconds: Double?
 
     var points: Int { tier.points }
 
     init(id: UUID = UUID(), questionId: UUID, memberId: UUID,
-         questionText: String, tier: PointTier, earnedAt: Date = Date()) {
+         questionText: String, tier: PointTier, earnedAt: Date = Date(),
+         elapsedSeconds: Double? = nil) {
         self.id = id; self.questionId = questionId; self.memberId = memberId
         self.questionText = questionText; self.tier = tier; self.earnedAt = earnedAt
+        self.elapsedSeconds = elapsedSeconds
     }
 }

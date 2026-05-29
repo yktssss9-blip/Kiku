@@ -11,6 +11,7 @@ struct QuestionDetailView: View {
     @State private var reminderCount = 0
     @State private var answerToReset: Answer? = nil
     @State private var progressAnimated = false
+    @State private var showInviteCopied = false
 
     // 未回答メンバー一覧
     private var pendingAnswers: [Answer] {
@@ -46,6 +47,18 @@ struct QuestionDetailView: View {
                     }
                 }
                 .disabled(pendingAnswers.isEmpty)
+
+                Button {
+                    copyInviteLink()
+                } label: {
+                    HStack {
+                        Image(systemName: showInviteCopied ? "checkmark.circle.fill" : "link.badge.plus")
+                            .foregroundStyle(showInviteCopied ? Color.green : Color.blue)
+                        Text(showInviteCopied ? "コピーしました！" : "招待リンクをコピー")
+                            .foregroundStyle(showInviteCopied ? Color.green : Color.primary)
+                        Spacer()
+                    }
+                }
             }
 
             Section("メンバーの回答") {
@@ -84,6 +97,28 @@ struct QuestionDetailView: View {
             } else {
                 Text("この回答を「未回答」に戻します。ポイントは取り消されません。")
             }
+        }
+    }
+
+    // MARK: - 招待リンク
+
+    private func copyInviteLink() {
+        let q = currentQuestion
+        let inviteURL = "kiku://invite?qid=\(q.id.uuidString)&token=\(q.inviteToken)"
+        let message = """
+        「\(q.text)」に回答してください！
+
+        アプリからタップ：
+        \(inviteURL)
+
+        きくをお持ちでない方はインストール後、上のリンクをタップしてください：
+        https://apps.apple.com/jp/app/id0000000000
+        """
+        UIPasteboard.general.string = message
+        withAnimation { showInviteCopied = true }
+        Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            await MainActor.run { withAnimation { showInviteCopied = false } }
         }
     }
 
@@ -183,9 +218,24 @@ struct QuestionDetailView: View {
             $0.questionId == question.id && $0.memberId == answer.memberId
         }
 
-        return HStack {
+        let starComment: String? = {
+            guard answer.value.hasPrefix("star:") else { return nil }
+            let parts = answer.value.dropFirst(5).split(separator: ":", maxSplits: 1)
+            guard parts.count > 1 else { return nil }
+            return String(parts[1])
+        }()
+
+        return HStack(alignment: starComment != nil ? .top : .center) {
             Text(friend?.emoji ?? "👤").font(.title3)
-            Text(friend?.name  ?? "不明").font(.body)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(friend?.name ?? "不明").font(.body)
+                if let comment = starComment {
+                    Text(comment)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
             Spacer()
             // 回答済みならポイントティアを表示
             if let record {
@@ -234,7 +284,8 @@ struct QuestionDetailView: View {
             let text = String(value.dropFirst(3))
             return badgePill("✕ \(text)", bg: Color.red.opacity(0.08), fg: .red)
         } else if value.hasPrefix("star:") {
-            let n = Int(value.dropFirst(5)) ?? 0
+            let parts = value.dropFirst(5).split(separator: ":", maxSplits: 1)
+            let n = Int(parts.first ?? "") ?? 0
             let stars = String(repeating: "★", count: n) + String(repeating: "☆", count: 5 - n)
             return badgePill(stars, bg: Color.orange.opacity(0.12), fg: .orange)
         } else if value.hasPrefix("emoji:") {

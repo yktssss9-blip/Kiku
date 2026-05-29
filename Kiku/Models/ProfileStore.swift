@@ -50,6 +50,27 @@ class ProfileStore: ObservableObject {
             saveProfileToFirestore()
         }
     }
+    @Published var activeHourStart: Int {
+        didSet {
+            UserDefaults.standard.set(activeHourStart, forKey: "kiku.profile.activeHourStart")
+            saveProfileToFirestore()
+        }
+    }
+    @Published var activeHourEnd: Int {
+        didSet {
+            UserDefaults.standard.set(activeHourEnd, forKey: "kiku.profile.activeHourEnd")
+            saveProfileToFirestore()
+        }
+    }
+
+    // 返信しやすい時間帯プリセット（end:24 = 深夜0時）
+    static let activeHourPresets: [(label: String, emoji: String, start: Int, end: Int)] = [
+        ("朝早め", "🌅", 6,  9),
+        ("朝",    "☀️", 9,  12),
+        ("昼",    "🌤", 12, 17),
+        ("夕方",  "🌇", 17, 21),
+        ("夜",    "🌙", 21, 24),
+    ]
 
     /// 自分を識別する固定 UUID（初回起動時に生成・永続化）
     let myId: UUID
@@ -74,7 +95,9 @@ class ProfileStore: ObservableObject {
         let savedMode = UserDefaults.standard.string(forKey: "kiku.profile.iconMode") ?? ""
         let hasPhoto  = UserDefaults.standard.data(forKey: "kiku.profile.photo") != nil
         self.iconMode = IconMode(rawValue: savedMode) ?? (hasPhoto ? .photo : .emoji)
-        self.isStopTimeActive = UserDefaults.standard.bool(forKey: "kiku.profile.stopTimeActive")
+        self.isStopTimeActive  = UserDefaults.standard.bool(forKey: "kiku.profile.stopTimeActive")
+        self.activeHourStart   = UserDefaults.standard.object(forKey: "kiku.profile.activeHourStart") as? Int ?? 9
+        self.activeHourEnd     = UserDefaults.standard.object(forKey: "kiku.profile.activeHourEnd")   as? Int ?? 12
 
         if let saved = UserDefaults.standard.string(forKey: "kiku.profile.myId"),
            let uuid = UUID(uuidString: saved) {
@@ -116,6 +139,14 @@ class ProfileStore: ObservableObject {
                 if let stopTime = data["stopTimeActive"] as? Bool {
                     UserDefaults.standard.set(stopTime, forKey: "kiku.profile.stopTimeActive")
                     self.isStopTimeActive = stopTime
+                }
+                if let start = data["activeHourStart"] as? Int {
+                    UserDefaults.standard.set(start, forKey: "kiku.profile.activeHourStart")
+                    self.activeHourStart = start
+                }
+                if let end = data["activeHourEnd"] as? Int {
+                    UserDefaults.standard.set(end, forKey: "kiku.profile.activeHourEnd")
+                    self.activeHourEnd = end
                 }
             }
         }
@@ -174,11 +205,13 @@ class ProfileStore: ObservableObject {
         guard let uid = Auth.auth().currentUser?.uid,
               !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         db.collection("users").document(uid).setData([
-            "name":           name,
-            "emoji":          emoji,
-            "localId":        myId.uuidString,
-            "stopTimeActive": isStopTimeActive,
-            "updatedAt":      FieldValue.serverTimestamp()
+            "name":            name,
+            "emoji":           emoji,
+            "localId":         myId.uuidString,
+            "stopTimeActive":  isStopTimeActive,
+            "activeHourStart": activeHourStart,
+            "activeHourEnd":   activeHourEnd,
+            "updatedAt":       FieldValue.serverTimestamp()
         ], merge: true)
     }
 
@@ -187,5 +220,24 @@ class ProfileStore: ObservableObject {
         emoji     = "👤"
         photoData = nil
         username  = ""
+    }
+
+    // MARK: - ストップモード 無料上限（1回/日）
+
+    func hasUsedFreeStopTimeToday() -> Bool {
+        guard let lastDate = UserDefaults.standard.object(forKey: "kiku.stopTime.lastDate") as? Date else { return false }
+        let count = UserDefaults.standard.integer(forKey: "kiku.stopTime.count")
+        return Calendar.current.isDateInToday(lastDate) && count >= 1
+    }
+
+    func recordStopTimeActivation() {
+        let lastDate = UserDefaults.standard.object(forKey: "kiku.stopTime.lastDate") as? Date
+        let count = UserDefaults.standard.integer(forKey: "kiku.stopTime.count")
+        if let last = lastDate, Calendar.current.isDateInToday(last) {
+            UserDefaults.standard.set(count + 1, forKey: "kiku.stopTime.count")
+        } else {
+            UserDefaults.standard.set(1, forKey: "kiku.stopTime.count")
+            UserDefaults.standard.set(Date(), forKey: "kiku.stopTime.lastDate")
+        }
     }
 }

@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		9A3DA9882FC93A7D00605C79 /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = 9A3DA9872FC93A7D00605C79 /* RevenueCat */; };
+		9A3DA98A2FC93A7D00605C79 /* RevenueCatUI in Frameworks */ = {isa = PBXBuildFile; productRef = 9A3DA9892FC93A7D00605C79 /* RevenueCatUI */; };
 		9A76AE292FC7E58C00A7285A /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 9A76AE282FC7E58C00A7285A /* FirebaseAuth */; };
 		9A76AE2B2FC7E58C00A7285A /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 9A76AE2A2FC7E58C00A7285A /* FirebaseFirestore */; };
 		9A76AE2D2FC7E58C00A7285A /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 9A76AE2C2FC7E58C00A7285A /* FirebaseMessaging */; };
@@ -59,6 +61,9 @@
 		NC001001001001001001AA01 /* KikuNotificationContent.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = KikuNotificationContent.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		AA000001000000000000001B /* Kiku */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -84,6 +89,8 @@
 			files = (
 				CC001001001001001001AA14 /* ActivityKit.framework in Frameworks */,
 				9A76AE2B2FC7E58C00A7285A /* FirebaseFirestore in Frameworks */,
+				9A3DA98A2FC93A7D00605C79 /* RevenueCatUI in Frameworks */,
+				9A3DA9882FC93A7D00605C79 /* RevenueCat in Frameworks */,
 				9A76AE2D2FC7E58C00A7285A /* FirebaseMessaging in Frameworks */,
 				9A76AE292FC7E58C00A7285A /* FirebaseAuth in Frameworks */,
 				KSHR000000000000000041 /* KikuShared in Frameworks */,
@@ -167,6 +174,8 @@
 				9A76AE282FC7E58C00A7285A /* FirebaseAuth */,
 				9A76AE2A2FC7E58C00A7285A /* FirebaseFirestore */,
 				9A76AE2C2FC7E58C00A7285A /* FirebaseMessaging */,
+				9A3DA9872FC93A7D00605C79 /* RevenueCat */,
+				9A3DA9892FC93A7D00605C79 /* RevenueCatUI */,
 			);
 			productName = Kiku;
 			productReference = AA000001000000000000001A /* Kiku.app */;
@@ -248,6 +257,7 @@
 			packageReferences = (
 				KSHR000000000000000040 /* XCLocalSwiftPackageReference "KikuShared" */,
 				9A76AE272FC7E58C00A7285A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				9A3DA9862FC93A7D00605C79 /* XCRemoteSwiftPackageReference "purchases-ios" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = AA000001000000000000001C /* Products */;
@@ -658,6 +668,14 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		9A3DA9862FC93A7D00605C79 /* XCRemoteSwiftPackageReference "purchases-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/RevenueCat/purchases-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.75.0;
+			};
+		};
 		9A76AE272FC7E58C00A7285A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
@@ -669,6 +687,16 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		9A3DA9872FC93A7D00605C79 /* RevenueCat */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9A3DA9862FC93A7D00605C79 /* XCRemoteSwiftPackageReference "purchases-ios" */;
+			productName = RevenueCat;
+		};
+		9A3DA9892FC93A7D00605C79 /* RevenueCatUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9A3DA9862FC93A7D00605C79 /* XCRemoteSwiftPackageReference "purchases-ios" */;
+			productName = RevenueCatUI;
+		};
 		9A76AE282FC7E58C00A7285A /* FirebaseAuth */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 9A76AE272FC7E58C00A7285A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;

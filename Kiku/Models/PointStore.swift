@@ -80,13 +80,21 @@ class PointStore: ObservableObject {
 
     // MARK: - 追加
 
+    func averageSpeed(for memberId: UUID) -> Double? {
+        let relevant = activeRecords.filter { $0.memberId == memberId && $0.elapsedSeconds != nil }
+        guard !relevant.isEmpty else { return nil }
+        let sum = relevant.compactMap(\.elapsedSeconds).reduce(0, +)
+        return sum / Double(relevant.count)
+    }
+
     func add(questionId: UUID, memberId: UUID, questionText: String, elapsed: TimeInterval) {
         let tier = PointTier.tier(for: elapsed)
         let record = PointRecord(
-            questionId:   questionId,
-            memberId:     memberId,
-            questionText: questionText,
-            tier:         tier
+            questionId:     questionId,
+            memberId:       memberId,
+            questionText:   questionText,
+            tier:           tier,
+            elapsedSeconds: elapsed
         )
         records.append(record)
         saveRecordToFirestore(record)
@@ -120,13 +128,14 @@ class PointStore: ObservableObject {
 
     private func saveRecordToFirestore(_ record: PointRecord) {
         guard let uid = Auth.auth().currentUser?.uid else { return }
-        let data: [String: Any] = [
+        var data: [String: Any] = [
             "questionId":   record.questionId.uuidString,
             "memberId":     record.memberId.uuidString,
             "questionText": record.questionText,
             "tier":         record.tier.rawValue,
             "earnedAt":     Timestamp(date: record.earnedAt)
         ]
+        if let elapsed = record.elapsedSeconds { data["elapsedSeconds"] = elapsed }
         db.collection("users").document(uid)
             .collection("points").document(record.id.uuidString)
             .setData(data)
@@ -145,8 +154,10 @@ class PointStore: ObservableObject {
               let earnedAt     = (data["earnedAt"] as? Timestamp)?.dateValue()
         else { return nil }
 
+        let elapsedSeconds = data["elapsedSeconds"] as? Double
         return PointRecord(id: id, questionId: questionId, memberId: memberId,
-                           questionText: questionText, tier: tier, earnedAt: earnedAt)
+                           questionText: questionText, tier: tier, earnedAt: earnedAt,
+                           elapsedSeconds: elapsedSeconds)
     }
 
     // MARK: - ローカル永続化

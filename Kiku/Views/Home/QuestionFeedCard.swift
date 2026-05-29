@@ -5,14 +5,13 @@ struct QuestionFeedCard: View {
     var friends: [Friend]
 
     @EnvironmentObject var questionStore: QuestionStore
-    @EnvironmentObject var groupStore: GroupStore
-    @EnvironmentObject var profileStore: ProfileStore
-    @EnvironmentObject var chatStore: ChatStore
+    @EnvironmentObject var groupStore:    GroupStore
+    @EnvironmentObject var profileStore:  ProfileStore
+    @EnvironmentObject var chatStore:     ChatStore
 
     @State private var showReminderAlert = false
-    @State private var reminderCount = 0
+    @State private var reminderCount     = 0
 
-    // questionStore の変更をリアルタイムに反映
     private var currentQuestion: Question {
         questionStore.questions.first { $0.id == question.id } ?? question
     }
@@ -21,106 +20,74 @@ struct QuestionFeedCard: View {
         currentQuestion.summary()
     }
 
-    // この質問に紐づくチャットセッション
-    private var chatSession: ChatSession? {
-        chatStore.sessions.first { $0.questionId == currentQuestion.id }
-    }
-
-    // QuestionDetailView の遷移先グループ
     private var destinationGroup: KikuGroup {
         if let gid = currentQuestion.groupId,
            let found = groupStore.groups.first(where: { $0.id == gid }) {
             return found
         }
-        return KikuGroup(
-            name: "",
-            memberIds: currentQuestion.answers.map(\.memberId)
-        )
+        return KikuGroup(name: "", memberIds: currentQuestion.answers.map(\.memberId))
+    }
+
+    // 回答済み（速い順）→ 未回答の順に並べる
+    private var sortedAnswers: [Answer] {
+        let answered = currentQuestion.answers
+            .filter { $0.value != "pending" }
+            .sorted { ($0.answeredAt ?? .distantFuture) < ($1.answeredAt ?? .distantFuture) }
+        let pending = currentQuestion.answers.filter { $0.value == "pending" }
+        return answered + pending
     }
 
     var body: some View {
         VStack(spacing: 0) {
 
-            // ─── メインコンテンツ行 ───
-            HStack(spacing: 12) {
-
-                // 左: プロフィールアバター（色付き丸）
-                profileAvatarView
-
-                // 中央: 質問文 + 集計ピル
-                VStack(alignment: .leading, spacing: 6) {
+            // ─── 質問文 ───
+            NavigationLink(
+                destination: QuestionDetailView(question: currentQuestion, group: destinationGroup)
+            ) {
+                HStack(spacing: 10) {
                     Text(currentQuestion.text)
                         .font(.body)
                         .fontWeight(.semibold)
+                        .foregroundStyle(.primary)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.leading)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 14)
+                .padding(.bottom, 10)
+            }
+            .buttonStyle(.plain)
 
-                    HStack(spacing: 6) {
-                        statPill(icon: "○", count: summary.yes, color: .green)
-                        statPill(icon: "✕", count: summary.no,  color: .red)
-                        if summary.pending > 0 {
-                            statPill(icon: "💬", count: summary.pending, color: .orange, suffix: "未回答")
-                        }
+            Divider().padding(.horizontal, 14)
+
+            // ─── メンバー回答一覧 ───
+            VStack(spacing: 0) {
+                ForEach(Array(sortedAnswers.enumerated()), id: \.element.memberId) { index, answer in
+                    memberRow(answer: answer)
+                    if index < sortedAnswers.count - 1 {
+                        Divider()
+                            .padding(.leading, 50)
+                            .padding(.trailing, 14)
                     }
                 }
-
-                Spacer()
-
-                // 右: 詳細への chevron
-                NavigationLink(
-                    destination: QuestionDetailView(
-                        question: currentQuestion,
-                        group: destinationGroup
-                    )
-                ) {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.secondary.opacity(0.5))
-                }
-                .buttonStyle(.plain)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 14)
+            .padding(.vertical, 4)
 
-            // ─── リマインドボタン（未回答がいるときのみ）───
+            // ─── リマインドボタン ───
             if summary.pending > 0 {
-                Divider()
-                    .padding(.horizontal, 14)
-
+                Divider().padding(.horizontal, 14)
                 Button(action: sendReminders) {
                     HStack(spacing: 5) {
-                        Image(systemName: "bell.badge.fill")
-                            .font(.caption)
-                        Text("未回答にリマインダーを送る")
-                            .font(.caption)
-                            .fontWeight(.medium)
+                        Image(systemName: "bell.badge.fill").font(.caption)
+                        Text("未回答にリマインド").font(.caption).fontWeight(.medium)
                     }
                     .foregroundStyle(.orange)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                }
-                .buttonStyle(.plain)
-            }
-
-            // ─── チャットボタン（セッションがあるときのみ）───
-            if let session = chatSession {
-                Divider()
-                    .padding(.horizontal, 14)
-
-                NavigationLink(destination: ChatView(session: session)) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "bubble.left.and.bubble.right.fill")
-                            .font(.caption)
-                        Text("チャットを見る")
-                            .font(.caption)
-                            .fontWeight(.medium)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(Color.blue.opacity(0.5))
-                    }
-                    .foregroundStyle(.blue)
-                    .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                 }
                 .buttonStyle(.plain)
@@ -135,47 +102,125 @@ struct QuestionFeedCard: View {
         }
     }
 
-    // MARK: - Subviews
+    // MARK: - Member Row
 
     @ViewBuilder
-    private var profileAvatarView: some View {
-        ZStack {
-            Circle()
-                .fill(Color.blue.opacity(0.1))
-                .frame(width: 44, height: 44)
+    private func memberRow(answer: Answer) -> some View {
+        let friend    = friends.first { $0.id == answer.memberId }
+        let emoji     = friend?.emoji ?? "👤"
+        let name      = friend?.name  ?? "不明"
+        let isPending = answer.value == "pending"
 
-            if let photo = profileStore.profileImage {
-                photo
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 44, height: 44)
-                    .clipShape(Circle())
+        HStack(spacing: 10) {
+            Text(emoji)
+                .font(.system(size: 18))
+                .frame(width: 34, height: 34)
+                .background(Color(UIColor.tertiarySystemBackground))
+                .clipShape(Circle())
+
+            Text(name)
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+
+            Spacer()
+
+            if isPending {
+                pendingIndicator
             } else {
-                Text(profileStore.emoji)
-                    .font(.system(size: 24))
+                answeredIndicator(answer: answer)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+    }
+
+    // 未回答: 経過時間を色つきで表示
+    @ViewBuilder
+    private var pendingIndicator: some View {
+        let elapsed = Date().timeIntervalSince(currentQuestion.createdAt)
+        HStack(spacing: 3) {
+            Image(systemName: "clock.badge.exclamationmark")
+                .font(.caption)
+            Text(formatElapsed(elapsed))
+                .font(.caption)
+                .fontWeight(.semibold)
+        }
+        .foregroundStyle(urgencyColor(for: elapsed))
+    }
+
+    // 回答済み: 回答アイコン + 速度ティア + 経過時間
+    @ViewBuilder
+    private func answeredIndicator(answer: Answer) -> some View {
+        HStack(spacing: 6) {
+            answerIcon(for: answer.value)
+
+            if let answeredAt = answer.answeredAt {
+                let elapsed = answeredAt.timeIntervalSince(currentQuestion.createdAt)
+                let tier    = PointTier.tier(for: elapsed)
+                HStack(spacing: 2) {
+                    Text(tierMark(tier)).font(.caption)
+                    Text(formatElapsed(elapsed))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
 
     @ViewBuilder
-    private func statPill(
-        icon: String,
-        count: Int,
-        color: Color,
-        suffix: String = ""
-    ) -> some View {
-        HStack(spacing: 3) {
-            Text(icon)
-                .font(.caption2)
-            Text(suffix.isEmpty ? "\(count)" : "\(count)\(suffix)")
-                .font(.caption2)
-                .fontWeight(.semibold)
+    private func answerIcon(for value: String) -> some View {
+        if answerIsYes(value) {
+            Text("○")
+                .font(.caption).fontWeight(.bold).foregroundStyle(.green)
+                .frame(width: 20, height: 20)
+                .background(Color.green.opacity(0.12))
+                .clipShape(Circle())
+        } else if answerIsNo(value) {
+            Text("✕")
+                .font(.caption).fontWeight(.bold).foregroundStyle(.red)
+                .frame(width: 20, height: 20)
+                .background(Color.red.opacity(0.12))
+                .clipShape(Circle())
+        } else {
+            Text(shortLabel(for: value))
+                .font(.caption).fontWeight(.semibold).foregroundStyle(.blue)
+                .lineLimit(1)
         }
-        .foregroundStyle(count == 0 ? Color.secondary : color)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background((count == 0 ? Color.secondary : color).opacity(0.1))
-        .clipShape(Capsule())
+    }
+
+    // MARK: - Helpers
+
+    private func tierMark(_ tier: PointTier) -> String {
+        switch tier {
+        case .fast:   return "⚡"
+        case .normal: return "🕐"
+        default:      return "💬"
+        }
+    }
+
+    private func urgencyColor(for elapsed: TimeInterval) -> Color {
+        elapsed < 5 * 60 ? .orange : .red
+    }
+
+    private func formatElapsed(_ elapsed: TimeInterval) -> String {
+        let s = Int(elapsed)
+        if s < 60  { return "\(s)秒" }
+        let m = s / 60
+        if m < 60  { return "\(m)分" }
+        let h = m / 60
+        if h < 24  { return "\(h)時間" }
+        return "\(h / 24)日"
+    }
+
+    private func shortLabel(for value: String) -> String {
+        if isTimeValue(value)         { return "🕐 \(value)" }
+        if value.hasPrefix("yes:")    { return String(value.dropFirst(4).prefix(8)) }
+        if value.hasPrefix("no:")     { return String(value.dropFirst(3).prefix(8)) }
+        if value.hasPrefix("star:")   { return "⭐ \(value.dropFirst(5))" }
+        if value.hasPrefix("emoji:")  { return String(value.dropFirst(6)) }
+        return value
     }
 
     // MARK: - Actions

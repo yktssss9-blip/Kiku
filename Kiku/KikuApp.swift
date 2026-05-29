@@ -6,6 +6,7 @@ import FirebaseCore
 import FirebaseMessaging
 import FirebaseFirestore
 import FirebaseAuth
+import RevenueCat
 
 class AppDelegate: NSObject, UIApplicationDelegate, MessagingDelegate {
     func application(
@@ -14,6 +15,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, MessagingDelegate {
     ) -> Bool {
         FirebaseApp.configure()
         Messaging.messaging().delegate = self
+        Purchases.configure(withAPIKey: "test_uTNfxnEanvlJHSWLXNADxMGrKnZ")
         return true
     }
 
@@ -45,8 +47,10 @@ struct KikuApp: App {
     @StateObject private var chatStore     = ChatStore()
     @StateObject private var pointStore    = PointStore()
     @StateObject private var templateStore = TemplateStore()
+    @StateObject private var purchaseStore = PurchaseStore()
 
     @State private var answerTarget: AnswerTarget? = nil
+    @State private var pendingInviteURL: URL? = nil
     @State private var showLiveActivityDisabledAlert = false
 
     var body: some Scene {
@@ -65,6 +69,7 @@ struct KikuApp: App {
                     .environmentObject(chatStore)
                     .environmentObject(pointStore)
                     .environmentObject(templateStore)
+                    .environmentObject(purchaseStore)
                     .onAppear {
                         requestNotificationPermission()
                         setupNotificationHandler()
@@ -100,19 +105,27 @@ struct KikuApp: App {
                         Text("ロック画面・Dynamic Islandでの回答ボタンを使うには、設定 → 通知 → きく → 「Live Activity」をオンにしてください。")
                     }
                     .onOpenURL { url in
-                        resolveAnswerTarget(from: url)
+                        handleURL(url)
+                    }
+                    .onAppear {
+                        if let url = pendingInviteURL {
+                            handleURL(url)
+                            pendingInviteURL = nil
+                        }
                     }
                     .sheet(item: $answerTarget) { target in
                         AnswerView(
                             question:    target.question,
                             memberId:    target.memberId,
                             memberName:  target.memberName,
-                            memberEmoji: target.memberEmoji
+                            memberEmoji: target.memberEmoji,
+                            isInvite:    target.isInvite
                         )
                         .environmentObject(questionStore)
                     }
             } else {
                 ProfileSetupView(store: profileStore)
+                    .onOpenURL { url in pendingInviteURL = url }
             }
         }
         .onChange(of: authStore.user) { _, user in
@@ -121,18 +134,28 @@ struct KikuApp: App {
                 questionStore.startListening(forUID: user.uid)
                 chatStore.startListening(forUID: user.uid)
                 pointStore.startListening(forUID: user.uid)
+                templateStore.startListening(forUID: user.uid)
             } else {
                 questionStore.stopListening()
                 chatStore.stopListening()
                 pointStore.stopListening()
+                templateStore.stopListening()
             }
         }
     }
 
-    // MARK: - URL スキーム処理（Live Activityボタン → AnswerView表示）
+    // MARK: - URL スキーム処理
+
+    private func handleURL(_ url: URL) {
+        guard url.scheme == "kiku" else { return }
+        switch url.host {
+        case "answer": resolveAnswerTarget(from: url)
+        case "invite": resolveInviteTarget(from: url)
+        default: break
+        }
+    }
 
     private func resolveAnswerTarget(from url: URL) {
-        guard url.scheme == "kiku", url.host == "answer" else { return }
         let params = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
         guard
             let qIdStr = params?.first(where: { $0.name == "questionId" })?.value,
@@ -149,6 +172,26 @@ struct KikuApp: App {
             memberName:  friend?.name  ?? "メンバー",
             memberEmoji: friend?.emoji ?? "👤"
         )
+    }
+
+    private func resolveInviteTarget(from url: URL) {
+        let params = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+        guard
+            let qIdStr = params?.first(where: { $0.name == "qid"   })?.value,
+            let token  = params?.first(where: { $0.name == "token" })?.value,
+            let questionId = UUID(uuidString: qIdStr)
+        else { return }
+
+        Task { @MainActor in
+            guard let question = await questionStore.fetchQuestionForInvite(questionId: questionId, token: token) else { return }
+            answerTarget = AnswerTarget(
+                question:    question,
+                memberId:    profileStore.myId,
+                memberName:  profileStore.name,
+                memberEmoji: profileStore.emoji,
+                isInvite:    true
+            )
+        }
     }
 
     // MARK: - 通知アクション処理（長押しボタン → 直接記録）
@@ -238,4 +281,5 @@ struct AnswerTarget: Identifiable {
     let memberId: UUID
     let memberName: String
     let memberEmoji: String
+    var isInvite: Bool = false
 }

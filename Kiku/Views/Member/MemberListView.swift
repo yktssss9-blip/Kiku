@@ -1,228 +1,232 @@
 import SwiftUI
+import Charts
 
 struct MemberListView: View {
     @EnvironmentObject private var friendStore:  FriendStore
     @EnvironmentObject private var pointStore:   PointStore
     @EnvironmentObject private var profileStore: ProfileStore
 
-    /// 自分 + 友達をポイント降順でランク付け
-    private var rankedEntries: [(rank: Int, friend: Friend, total: Int, isMe: Bool)] {
+    private var rankedEntries: [RankedEntry] {
         let me = Friend(id: profileStore.myId, name: profileStore.name, emoji: profileStore.emoji)
         let all = [me] + friendStore.friends
 
         let sorted = all
-            .map { ($0, pointStore.total(for: $0.id)) }
-            .sorted { $0.1 > $1.1 }
+            .map { RankedEntry(rank: 0, friend: $0,
+                               avgSpeed: pointStore.averageSpeed(for: $0.id),
+                               isMe: $0.id == profileStore.myId) }
+            .sorted {
+                switch ($0.avgSpeed, $1.avgSpeed) {
+                case (.some(let a), .some(let b)): return a < b
+                case (.some, .none):               return true
+                default:                           return false
+                }
+            }
 
-        var result: [(rank: Int, friend: Friend, total: Int, isMe: Bool)] = []
-        var currentRank = 1
-        for (i, item) in sorted.enumerated() {
-            if i > 0 && item.1 < sorted[i - 1].1 { currentRank = i + 1 }
-            result.append((rank: currentRank, friend: item.0, total: item.1,
-                           isMe: item.0.id == profileStore.myId))
+        return sorted.enumerated().map { i, entry in
+            RankedEntry(rank: i + 1, friend: entry.friend,
+                        avgSpeed: entry.avgSpeed, isMe: entry.isMe)
         }
-        return result
+    }
+
+    private var maxSpeed: Double {
+        let speeds = rankedEntries.compactMap(\.avgSpeed)
+        return max(speeds.max() ?? 60, 60)
     }
 
     var body: some View {
         NavigationStack {
-            rankingList
-                .navigationTitle("ランキング")
+            List {
+                reportHeaderSection
+                rankingSection
+                footerSection
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle("シゴできランキング")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 
-    // MARK: - ランキング表
+    // MARK: - レポートヘッダー
 
-    private var rankingList: some View {
-        List {
-            Section {
-                rankingHeader
-            }
-            Section {
-                ForEach(rankedEntries, id: \.friend.id) { item in
-                    RankingRow(rank:         item.rank,
-                               friend:       item.friend,
-                               total:        item.total,
-                               history:      pointStore.history(for: item.friend.id),
-                               title:        pointStore.title(rank: item.rank,
-                                                              outOf: rankedEntries.count),
-                               isMe:         item.isMe,
-                               profileImage: item.isMe ? profileStore.profileImage : nil)
+    private var reportHeaderSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Image(systemName: "doc.text.fill")
+                        .foregroundStyle(.secondary)
+                    Text("週次シゴでき評価")
+                        .font(.headline)
+                    Spacer()
+                    Text(periodLabel)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
+                Text("評価指標：直近7日間の平均回答速度")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    // MARK: - ランキング
+
+    private var rankingSection: some View {
+        Section {
+            columnHeader
+            ForEach(rankedEntries) { entry in
+                RankingRow(entry: entry, maxSpeed: maxSpeed,
+                           title: pointStore.title(rank: entry.rank,
+                                                   outOf: rankedEntries.count))
             }
         }
     }
 
-    private var rankingHeader: some View {
+    private var columnHeader: some View {
         HStack(spacing: 0) {
-            Text("順位")
-                .frame(width: 44, alignment: .center)
-            Text("名前")
+            Text("位")
+                .frame(width: 36, alignment: .center)
+            Text("氏名・称号")
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Text("合計")
-                .frame(width: 72, alignment: .trailing)
+                .padding(.leading, 8)
+            Text("平均速度")
+                .frame(width: 120, alignment: .leading)
         }
         .font(.caption)
         .foregroundStyle(.secondary)
         .padding(.vertical, 2)
     }
+
+    // MARK: - フッター
+
+    private var footerSection: some View {
+        Section {
+            HStack {
+                Label("あなた", systemImage: "person.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("速い ←→ 遅い")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    // MARK: - ヘルパー
+
+    private var periodLabel: String {
+        let end   = Date()
+        let start = end.addingTimeInterval(-7 * 24 * 60 * 60)
+        let fmt   = DateFormatter()
+        fmt.dateFormat = "M/d"
+        return "\(fmt.string(from: start))〜\(fmt.string(from: end))"
+    }
+}
+
+// MARK: - データモデル
+
+private struct RankedEntry: Identifiable {
+    var id: UUID { friend.id }
+    let rank:     Int
+    let friend:   Friend
+    let avgSpeed: Double?
+    let isMe:     Bool
 }
 
 // MARK: - ランキング行
 
 private struct RankingRow: View {
-    let rank:         Int
-    let friend:       Friend
-    let total:        Int
-    let history:      [PointRecord]
-    let title:        PointTitle
-    var isMe:         Bool   = false
-    var profileImage: Image? = nil
-
-    @State private var isExpanded = false
+    let entry:    RankedEntry
+    let maxSpeed: Double
+    let title:    PointTitle
 
     var body: some View {
-        VStack(spacing: 0) {
-            // メイン行
-            Button {
-                withAnimation(.spring(duration: 0.3)) { isExpanded.toggle() }
-            } label: {
-                HStack(spacing: 0) {
-                    // 順位バッジ
-                    rankBadge
-                        .frame(width: 44, alignment: .center)
+        HStack(spacing: 0) {
+            rankBadge
+                .frame(width: 36, alignment: .center)
 
-                    // アイコン + 名前 + 称号
-                    HStack(spacing: 8) {
-                        Group {
-                            if let image = profileImage {
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                            } else {
-                                Text(friend.emoji)
-                                    .font(.title3)
-                            }
-                        }
-                        .frame(width: 34, height: 34)
-                        .background(Color(UIColor.secondarySystemBackground))
-                        .clipShape(Circle())
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack(spacing: 4) {
-                                Text(friend.name).font(.body)
-                                if isMe {
-                                    Text("あなた")
-                                        .font(.caption2)
-                                        .fontWeight(.semibold)
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, 6).padding(.vertical, 2)
-                                        .background(Color.blue)
-                                        .clipShape(Capsule())
-                                }
-                            }
-                            Text(title.display)
+            HStack(spacing: 6) {
+                Text(entry.friend.emoji)
+                    .font(.body)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Text(entry.friend.name)
+                            .font(.subheadline)
+                            .fontWeight(entry.isMe ? .semibold : .regular)
+                        if entry.isMe {
+                            Image(systemName: "person.fill")
                                 .font(.caption2)
-                                .foregroundStyle(titleColor(title))
-                                .padding(.horizontal, 6).padding(.vertical, 2)
-                                .background(titleColor(title).opacity(0.12))
-                                .clipShape(Capsule())
+                                .foregroundStyle(.blue)
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                    // 合計ポイント
-                    HStack(spacing: 2) {
-                        Text("🏆")
-                        Text("\(total)pt")
-                            .fontWeight(.semibold)
-                            .foregroundStyle(total > 0 ? .primary : .secondary)
-                    }
-                    .font(.subheadline)
-                    .frame(width: 72, alignment: .trailing)
-
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.leading, 6)
-                }
-                .padding(.vertical, 4)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            // 展開：獲得履歴
-            if isExpanded {
-                Divider().padding(.leading, 44)
-
-                if history.isEmpty {
-                    Text("まだ回答履歴がありません")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, 44)
-                        .padding(.vertical, 8)
-                } else {
-                    VStack(spacing: 0) {
-                        ForEach(history.prefix(5)) { record in
-                            HStack {
-                                Text(record.tier.label)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 72, alignment: .leading)
-                                Text(record.questionText)
-                                    .font(.caption)
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                                Spacer()
-                                Text("+\(record.points)pt")
-                                    .font(.caption)
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(tierColor(record.tier))
-                            }
-                            .padding(.leading, 44)
-                            .padding(.vertical, 5)
-                            Divider().padding(.leading, 44)
-                        }
-                        if history.count > 5 {
-                            Text("他 \(history.count - 5) 件")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .trailing)
-                                .padding(.trailing, 4)
-                                .padding(.bottom, 4)
-                        }
-                    }
+                    Text(title.display)
+                        .font(.caption2)
+                        .foregroundStyle(titleColor)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 8)
+
+            speedBar
+                .frame(width: 120)
+        }
+        .padding(.vertical, 4)
+        .listRowBackground(entry.isMe ? Color.blue.opacity(0.06) : Color.clear)
+    }
+
+    private var speedBar: some View {
+        HStack(spacing: 6) {
+            GeometryReader { geo in
+                let ratio  = entry.avgSpeed.map { min($0 / maxSpeed, 1.0) } ?? 1.0
+                let filled = geo.size.width * ratio
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color(UIColor.systemFill))
+                        .frame(height: 8)
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(barColor)
+                        .frame(width: max(filled, 6), height: 8)
+                }
+                .frame(maxHeight: .infinity, alignment: .center)
+            }
+            .frame(height: 20)
+
+            Text(speedLabel)
+                .font(.caption2)
+                .fontWeight(.semibold)
+                .foregroundStyle(barColor)
+                .frame(width: 34, alignment: .trailing)
         }
     }
 
     private var rankBadge: some View {
         Group {
-            switch rank {
-            case 1:
-                Text("🥇").font(.title3)
-            case 2:
-                Text("🥈").font(.title3)
-            case 3:
-                Text("🥉").font(.title3)
+            switch entry.rank {
+            case 1: Text("🥇").font(.title3)
+            case 2: Text("🥈").font(.title3)
+            case 3: Text("🥉").font(.title3)
             default:
-                Text("\(rank)")
-                    .font(.caption).fontWeight(.bold)
-                    .foregroundStyle(.secondary)
+                Text("\(entry.rank)")
+                    .font(.caption).fontWeight(.bold).foregroundStyle(.secondary)
             }
         }
     }
 
-    private func tierColor(_ tier: PointTier) -> Color {
-        switch tier {
-        case .fast:                    return .orange
-        case .normal:                  return .blue
-        case .late, .senderFast, .senderNormal: return .secondary
-        }
+    private var speedLabel: String {
+        guard let s = entry.avgSpeed else { return "–" }
+        return s < 60 ? String(format: "%.0f秒", s)
+                      : String(format: "%.0f秒", s)
     }
 
-    private func titleColor(_ title: PointTitle) -> Color {
+    private var barColor: Color {
+        guard let s = entry.avgSpeed else { return .secondary }
+        if s < 60  { return .orange }
+        if s < 180 { return .blue   }
+        return .secondary
+    }
+
+    private var titleColor: Color {
         switch title.color {
         case "orange": return .orange
         case "blue":   return .blue
