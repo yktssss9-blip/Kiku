@@ -58,6 +58,9 @@ struct KikuApp: App {
             if authStore.isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if authStore.user == nil {
+                LoginView()
+                    .environmentObject(authStore)
             } else if profileStore.isSetupComplete {
                 ContentView()
                     .environmentObject(authStore)
@@ -76,6 +79,8 @@ struct KikuApp: App {
                         setupChatUnlock()
                         questionStore.pointStore = pointStore
                         questionStore.senderMemberId = profileStore.myId
+                        questionStore.senderName  = profileStore.name
+                        questionStore.senderEmoji = profileStore.emoji
                         questionStore.applyPendingFromSharedStore()
                         checkLiveActivityAuthorization()
                         setupGroupDeletion()
@@ -123,6 +128,9 @@ struct KikuApp: App {
                         )
                         .environmentObject(questionStore)
                     }
+            } else if pendingInviteURL != nil {
+                InviteSetupView(store: profileStore)
+                    .onOpenURL { url in pendingInviteURL = url }
             } else {
                 ProfileSetupView(store: profileStore)
                     .onOpenURL { url in pendingInviteURL = url }

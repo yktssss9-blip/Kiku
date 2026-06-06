@@ -27,6 +27,18 @@ struct KikuLiveActivityView: View {
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
 
+                    // あとX人 バッジ
+                    HStack(spacing: 4) {
+                        Image(systemName: "person.2.fill")
+                            .font(.caption2)
+                        Text("あと\(context.state.pendingCount)人")
+                            .font(.caption).fontWeight(.bold)
+                    }
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .background(Color.orange.opacity(0.15))
+                    .clipShape(Capsule())
+
                     // 大きなタイマー ＋ ポイントヒント
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(context.attributes.sentAt, style: .timer)
@@ -158,8 +170,12 @@ struct KikuLiveActivityWidget: Widget {
             } compactLeading: {
                 Image(systemName: "questionmark.circle.fill").foregroundStyle(.blue)
             } compactTrailing: {
-                Text(context.attributes.sentAt, style: .timer)
-                    .font(.caption2).monospacedDigit().foregroundStyle(.orange)
+                HStack(spacing: 3) {
+                    Text("\(context.state.pendingCount)")
+                        .font(.caption2).fontWeight(.bold).foregroundStyle(.orange)
+                    Text("人")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
             } minimal: {
                 Image(systemName: "questionmark.circle.fill").foregroundStyle(.blue)
             }

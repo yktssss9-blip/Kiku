@@ -93,7 +93,7 @@ struct QuestionFeedCard: View {
                 .buttonStyle(.plain)
             }
         }
-        .background(Color(UIColor.secondarySystemBackground))
+        .background(Color(white: 0.1))
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .alert("リマインドを送りました", isPresented: $showReminderAlert) {
             Button("OK", role: .cancel) {}

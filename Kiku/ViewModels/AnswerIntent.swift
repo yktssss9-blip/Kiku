@@ -37,5 +37,6 @@ struct AnswerIntent: AppIntent, LiveActivityIntent {
 }
 
 extension Notification.Name {
-    static let kikuAnswerSubmitted = Notification.Name("kiku.answerSubmitted")
+    static let kikuAnswerSubmitted   = Notification.Name("kiku.answerSubmitted")
+    static let kikuQuestionCompleted = Notification.Name("kiku.questionCompleted")
 }

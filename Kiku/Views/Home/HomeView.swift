@@ -31,28 +31,16 @@ struct HomeView: View {
         feedQuestions.filter { $0.summary().pending == 0 }
     }
 
-    @State private var showPendingInbox      = false
+    @State private var showPendingInbox       = false
     @State private var questionToDelete: Question? = nil
     @State private var showDeleteQuestionAlert = false
-    @State private var isCompletedExpanded   = false
-
-    // グループ管理
-    @State private var isGroupsExpanded    = true
-    @State private var showGroupCreate     = false
-    @State private var groupToEdit:   KikuGroup? = nil
-    @State private var groupToDelete: KikuGroup? = nil
-    @State private var showDeleteGroupAlert = false
-
-    @State private var showPaywall = false
+    @State private var isCompletedExpanded    = false
+    @State private var showPaywall            = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
-
-                    // ─── 質問作成エリア ───
-                    QuestionComposerView(onSend: handleSend)
-                        .padding(.horizontal, 16)
 
                     // ─── 自分への未回答バナー ───
                     if myPendingCount > 0 {
@@ -102,17 +90,13 @@ struct HomeView: View {
                             .padding(.horizontal, 16)
                     }
 
-                    // ─── グループセクション ───
-                    groupSection
-                        .padding(.horizontal, 16)
-
                     // ─── 空状態 ───
                     if feedQuestions.isEmpty {
                         VStack(spacing: 12) {
                             Image(systemName: "questionmark.bubble")
                                 .font(.system(size: 48))
                                 .foregroundStyle(.secondary.opacity(0.4))
-                            Text("質問を送ってみよう")
+                            Text("質問を送って\n返事を集めよう")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
@@ -124,7 +108,7 @@ struct HomeView: View {
                 .padding(.bottom, 32)
             }
             .background(Color(UIColor.systemGroupedBackground))
-            .navigationTitle("シゴでき")
+            .navigationTitle("フィード")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -154,31 +138,11 @@ struct HomeView: View {
         } message: { q in
             Text("「\(q.text)」と回答データをすべて削除します。この操作は元に戻せません。")
         }
-        .alert("グループを削除しますか？", isPresented: $showDeleteGroupAlert, presenting: groupToDelete) { g in
-            Button("削除", role: .destructive) {
-                groupStore.delete(id: g.id)
-                groupToDelete = nil
-            }
-            Button("キャンセル", role: .cancel) { groupToDelete = nil }
-        } message: { g in
-            Text("「\(g.name)」とそのグループに送信した質問・回答データをすべて削除します。この操作は元に戻せません。")
-        }
         .sheet(isPresented: $showPendingInbox) {
             NotificationInboxView()
                 .environmentObject(questionStore)
                 .environmentObject(friendStore)
                 .environmentObject(profileStore)
-        }
-        .sheet(isPresented: $showGroupCreate) {
-            GroupCreateView()
-                .environmentObject(friendStore)
-                .environmentObject(groupStore)
-                .environmentObject(purchaseStore)
-        }
-        .sheet(item: $groupToEdit) { group in
-            GroupEditView(group: group)
-                .environmentObject(friendStore)
-                .environmentObject(groupStore)
         }
         .sheet(isPresented: $showPaywall) {
             PaywallView()
@@ -282,159 +246,6 @@ struct HomeView: View {
             }
     }
 
-    // MARK: - グループセクション
-
-    @ViewBuilder
-    private var groupSection: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 8) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isGroupsExpanded.toggle()
-                    }
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "person.3.fill")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.indigo)
-                        Text("グループ")
-                            .font(.headline)
-                            .fontWeight(.bold)
-                            .foregroundStyle(.primary)
-                        if !groupStore.groups.isEmpty {
-                            Text("\(groupStore.groups.count)")
-                                .font(.caption)
-                                .fontWeight(.bold)
-                                .foregroundStyle(.indigo)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 2)
-                                .background(Color.indigo.opacity(0.12))
-                                .clipShape(Capsule())
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .rotationEffect(.degrees(isGroupsExpanded ? 0 : -90))
-                    }
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    showGroupCreate = true
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.indigo)
-                        .padding(6)
-                        .background(Color.indigo.opacity(0.12))
-                        .clipShape(Circle())
-                }
-            }
-
-            if isGroupsExpanded {
-                if groupStore.groups.isEmpty {
-                    HStack {
-                        Text("まだグループがありません")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 4)
-                } else {
-                    VStack(spacing: 8) {
-                        ForEach(groupStore.groups) { group in
-                            Button { groupToEdit = group } label: { groupCard(group) }
-                                .buttonStyle(.plain)
-                                .contextMenu {
-                                    Button { groupToEdit = group } label: {
-                                        Label("グループを編集", systemImage: "pencil")
-                                    }
-                                    Button(role: .destructive) {
-                                        groupToDelete = group
-                                        showDeleteGroupAlert = true
-                                    } label: {
-                                        Label("グループを削除", systemImage: "trash")
-                                    }
-                                }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private func groupCard(_ group: KikuGroup) -> some View {
-        HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.indigo.opacity(0.12))
-                    .frame(width: 40, height: 40)
-                Image(systemName: "person.3.fill")
-                    .font(.system(size: 16))
-                    .foregroundStyle(.indigo)
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(group.name)
-                    .font(.body)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.primary)
-                Text("\(group.memberIds.count)人のメンバー")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.tertiary)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(Color(UIColor.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    // MARK: - 送信ロジック
-
-    private func handleSend(
-        _ text: String,
-        _ friends: [Friend]?,
-        _ group: KikuGroup?,
-        _ choices: [AnswerChoice],
-        _ reminderAfter: TimeInterval?
-    ) {
-        if let targets = friends, !targets.isEmpty {
-            questionStore.sendToIndividuals(text: text, to: targets, choices: choices, reminderAfter: reminderAfter)
-            Task { @MainActor in
-                if let question = questionStore.questions.last {
-                    for friend in targets {
-                        ActivityManager.shared.start(
-                            question:   question,
-                            memberId:   friend.id,
-                            memberName: friend.name
-                        )
-                        try? await Task.sleep(nanoseconds: 300_000_000)
-                    }
-                }
-            }
-        } else if let target = group {
-            questionStore.send(text: text, to: target, friends: friendStore.friends, choices: choices, reminderAfter: reminderAfter)
-            Task { @MainActor in
-                if let question = questionStore.questions.last {
-                    for memberId in target.memberIds {
-                        let friend = friendStore.friends.first { $0.id == memberId }
-                        ActivityManager.shared.start(
-                            question:   question,
-                            memberId:   memberId,
-                            memberName: friend?.name ?? "メンバー"
-                        )
-                        try? await Task.sleep(nanoseconds: 300_000_000)
-                    }
-                }
-            }
-        }
-    }
 }
 
 // MARK: - Preview

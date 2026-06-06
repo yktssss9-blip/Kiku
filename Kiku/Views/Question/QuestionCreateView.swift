@@ -4,9 +4,12 @@ struct QuestionCreateView: View {
     let group: KikuGroup
     @EnvironmentObject private var questionStore: QuestionStore
     @EnvironmentObject private var friendStore: FriendStore
+    @EnvironmentObject private var profileStore: ProfileStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var questionText = ""
+    @State private var memo = ""
+    @State private var notifySelf = false
 
     var canSend: Bool {
         !questionText.trimmingCharacters(in: .whitespaces).isEmpty
@@ -19,6 +22,24 @@ struct QuestionCreateView: View {
                 Section("質問文") {
                     TextField("例: 今夜ご飯食べる？", text: $questionText)
                         .autocorrectionDisabled()
+                }
+
+                Section {
+                    TextField("例: 渋谷Bar K / 19時〜 / 3000円くらい", text: $memo, axis: .vertical)
+                        .lineLimit(3...6)
+                        .autocorrectionDisabled()
+                } header: {
+                    Text("メモ（任意）")
+                } footer: {
+                    Text("場所・時間など、メンバーが確認できるメモを残せます")
+                }
+
+                Section {
+                    Toggle(isOn: $notifySelf) {
+                        Label("自分にも送る", systemImage: "bell.badge")
+                    }
+                } footer: {
+                    Text("通知の動作確認用。自分のデバイスにも受信者として通知が届きます。")
                 }
 
                 Section("選択肢（固定）") {
@@ -37,19 +58,29 @@ struct QuestionCreateView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("送信する") {
                         let text = questionText.trimmingCharacters(in: .whitespaces)
-                        questionStore.send(text: text, to: group, friends: friendStore.friends)
+                        let memoValue = memo.trimmingCharacters(in: .whitespaces)
+                        questionStore.send(text: text, to: group, friends: friendStore.friends,
+                                           memo: memoValue.isEmpty ? nil : memoValue,
+                                           includeSelf: notifySelf)
 
                         // 各メンバーの Live Activity を自動起動
                         Task { @MainActor in
                             if let question = questionStore.questions.last {
-                                for memberId in group.memberIds {
-                                    let friend = friendStore.friends.first { $0.id == memberId }
+                                var memberIds = group.memberIds
+                                if notifySelf, let selfId = questionStore.senderMemberId,
+                                   !memberIds.contains(selfId) {
+                                    memberIds.append(selfId)
+                                }
+                                for memberId in memberIds {
+                                    let isSelf = memberId == questionStore.senderMemberId
+                                    let name = isSelf
+                                        ? profileStore.name
+                                        : (friendStore.friends.first { $0.id == memberId }?.name ?? "メンバー")
                                     ActivityManager.shared.start(
                                         question:   question,
                                         memberId:   memberId,
-                                        memberName: friend?.name ?? "メンバー"
+                                        memberName: name
                                     )
-                                    // 複数起動の間隔を空ける
                                     try? await Task.sleep(nanoseconds: 300_000_000)
                                 }
                             }

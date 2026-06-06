@@ -215,6 +215,11 @@ class ProfileStore: ObservableObject {
         ], merge: true)
     }
 
+    func completeSetup(name: String, emoji: String) {
+        self.emoji = emoji
+        self.name  = name.trimmingCharacters(in: .whitespaces)
+    }
+
     func reset() {
         name      = ""
         emoji     = "👤"

@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <!-- Smart App Banner: App Store ID確定後に PLACEHOLDER を実際のApp IDに差し替えること -->
+  <meta name="apple-itunes-app" content="app-id=PLACEHOLDER">
+  <title>きく</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif;
+      background: #0d0d0d;
+      color: #f0f0f0;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .container { width: 100%; max-width: 400px; text-align: center; }
+    .app-name { font-size: 13px; color: #888; letter-spacing: 0.12em; margin-bottom: 40px; }
+    .question { font-size: 22px; font-weight: 700; line-height: 1.5; margin-bottom: 20px; }
+    .memo {
+      font-size: 14px; color: #aaa; background: #1a1a1a;
+      border-radius: 12px; padding: 12px 16px; margin-bottom: 28px;
+      text-align: left; white-space: pre-wrap; line-height: 1.6;
+    }
+    .label { font-size: 13px; color: #888; margin-bottom: 12px; }
+    .member-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
+    .member-btn {
+      background: #1e1e1e; border: 2px solid #333; border-radius: 14px;
+      color: #f0f0f0; font-size: 16px; padding: 14px 20px; cursor: pointer;
+      transition: background 0.1s, border-color 0.1s; width: 100%;
+    }
+    .member-btn:active { background: #2a2a2a; border-color: #666; }
+    .member-btn:disabled { opacity: 0.35; cursor: default; }
+    .answer-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .yes-btn {
+      background: #1a3a1a; border: 2px solid #2d6a2d; border-radius: 20px;
+      color: #4cd964; font-size: 22px; font-weight: 700; padding: 22px;
+      cursor: pointer; transition: background 0.1s;
+    }
+    .no-btn {
+      background: #2a1a1a; border: 2px solid #6a2d2d; border-radius: 20px;
+      color: #ff6b6b; font-size: 22px; font-weight: 700; padding: 22px;
+      cursor: pointer; transition: background 0.1s;
+    }
+    .yes-btn:active { background: #2a4a2a; }
+    .no-btn:active  { background: #3a2020; }
+    .yes-btn:disabled, .no-btn:disabled { opacity: 0.4; cursor: default; }
+    .done-icon { font-size: 52px; margin-bottom: 16px; }
+    .done-text { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+    .done-sub  { font-size: 14px; color: #888; }
+    .error-text { font-size: 16px; color: #ff6b6b; }
+    .hidden { display: none !important; }
+    #answering-for { font-size: 14px; color: #aaa; margin-bottom: 20px; }
+    .progress-bar {
+      font-size: 13px; color: #888; background: #1a1a1a;
+      border-radius: 10px; padding: 8px 14px; margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="app-name">き く</div>
+
+  <div id="screen-loading"><div style="color:#888">読み込み中...</div></div>
+
+  <div id="screen-error" class="hidden">
+    <div class="error-text">リンクが無効か期限切れです</div>
+  </div>
+
+  <div id="screen-member" class="hidden">
+    <div class="question" id="q-text"></div>
+    <div class="memo hidden" id="memo-box"></div>
+    <div id="progress-member" class="progress-bar hidden"></div>
+    <div class="label">あなたは誰ですか？</div>
+    <div class="member-list" id="member-list"></div>
+  </div>
+
+  <div id="screen-answer" class="hidden">
+    <div class="question" id="q-text-2"></div>
+    <div id="answering-for"></div>
+    <div id="progress-answer" class="progress-bar hidden"></div>
+    <div class="answer-btns">
+      <button class="yes-btn" id="yes-btn">○ はい</button>
+      <button class="no-btn"  id="no-btn">✕ いいえ</button>
+    </div>
+  </div>
+
+  <div id="screen-done" class="hidden">
+    <div class="done-icon" id="done-icon"></div>
+    <div class="done-text" id="done-text"></div>
+    <div class="done-sub" id="done-sub">きくに回答しました</div>
+    <div id="app-banner" class="hidden" style="
+      margin-top: 32px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 16px;
+      padding: 16px 20px;
+      text-align: left;
+    ">
+      <div style="font-size:13px; color:#888; margin-bottom:6px;">もっと便利に使うなら</div>
+      <div style="font-size:15px; font-weight:700; margin-bottom:4px;">きく アプリ</div>
+      <div style="font-size:13px; color:#aaa; margin-bottom:12px;">
+        ロック画面からワンタップで回答。次回の質問は通知で届きます。
+      </div>
+      <a id="app-store-link" href="#" style="
+        display: block;
+        background: #0a84ff;
+        color: white;
+        text-align: center;
+        padding: 10px;
+        border-radius: 10px;
+        font-size: 14px;
+        font-weight: 600;
+        text-decoration: none;
+      ">App Store で入手（準備中）</a>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp }
+    from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js';
+  import { getFirestore, doc, onSnapshot, updateDoc, Timestamp }
+    from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js';
+
+  const firebaseConfig = {
+    apiKey:            "AIzaSyAqxBvj2QxvIbK5dQVaSUAP7f8QM3UbHmM",
+    authDomain:        "shigodeki-8e49a.firebaseapp.com",
+    projectId:         "shigodeki-8e49a",
+    storageBucket:     "shigodeki-8e49a.firebasestorage.app",
+    messagingSenderId: "359654743554",
+    appId:             "1:359654743554:web:932c196130f3110bb3111b",
+    measurementId:     "G-5MS32ZW7YY"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getFirestore(app);
+
+  const screens = ['screen-loading','screen-error','screen-member','screen-answer','screen-done'];
+  function show(id) {
+    screens.forEach(s => document.getElementById(s).classList.add('hidden'));
+    document.getElementById(id).classList.remove('hidden');
+  }
+
+  const pathParts = location.pathname.split('/').filter(Boolean); // ['q', '{id}']
+  const qid   = pathParts[1];
+  const token = new URLSearchParams(location.search).get('token');
+
+  if (!qid || !token) { show('screen-error'); throw new Error('invalid url'); }
+
+  const ref = doc(db, 'questions', qid);
+
+  let initialized  = false;
+  let liveData     = null;
+  let selectedId   = null;
+  let selectedName = null;
+
+  function calcProgress(data) {
+    const memberNames = data.memberNames || {};
+    const answers     = data.answers     || {};
+    const total    = Object.keys(memberNames).length;
+    const answered = Object.entries(memberNames).filter(
+      ([uuid]) => answers[uuid]?.value && answers[uuid].value !== 'pending'
+    ).length;
+    return { answered, total };
+  }
+
+  function updateProgress(data) {
+    const { answered, total } = calcProgress(data);
+    if (total === 0) return;
+
+    const text = `${answered} / ${total} 人が回答済み`;
+    const progMember = document.getElementById('progress-member');
+    const progAnswer = document.getElementById('progress-answer');
+    progMember.textContent = text;
+    progMember.classList.remove('hidden');
+    progAnswer.textContent = text;
+    progAnswer.classList.remove('hidden');
+
+    const remaining = total - answered;
+    document.getElementById('done-sub').textContent =
+      remaining <= 0
+        ? '🎉 全員揃いました！'
+        : `✅ あなたの回答が届きました！残り ${remaining} 人の回答を待っています`;
+  }
+
+  onSnapshot(ref, (snap) => {
+    if (!snap.exists() || snap.data().inviteToken !== token) {
+      if (!initialized) show('screen-error');
+      return;
+    }
+
+    liveData = snap.data();
+    updateProgress(liveData);
+
+    if (!initialized) {
+      initialized = true;
+
+      const memberNames = liveData.memberNames || {};
+      const answers     = liveData.answers     || {};
+
+      document.getElementById('q-text').textContent   = liveData.text;
+      document.getElementById('q-text-2').textContent = liveData.text;
+
+      if (liveData.memo) {
+        const box = document.getElementById('memo-box');
+        box.textContent = liveData.memo;
+        box.classList.remove('hidden');
+      }
+
+      const list    = document.getElementById('member-list');
+      const entries = Object.entries(memberNames);
+
+      if (entries.length === 0) {
+        // memberNames が未保存の場合: テキスト入力フォールバック
+        list.innerHTML = `
+          <input id="name-input" type="text" placeholder="あなたの名前"
+            style="background:#1e1e1e;border:2px solid #333;border-radius:14px;
+                   color:#f0f0f0;font-size:16px;padding:14px 20px;width:100%;outline:none;">
+          <button class="member-btn" onclick="
+            const n = document.getElementById('name-input').value.trim();
+            if (!n) return;
+            window._selectMember('web-' + crypto.randomUUID(), n);
+          ">次へ →</button>`;
+      } else {
+        for (const [uuid, name] of entries) {
+          const btn = document.createElement('button');
+          btn.className = 'member-btn';
+          const answered = answers[uuid]?.value && answers[uuid].value !== 'pending';
+          if (answered) {
+            btn.textContent = name + '（回答済み）';
+            btn.disabled = true;
+          } else {
+            btn.textContent = name;
+            btn.onclick = () => window._selectMember(uuid, name);
+          }
+          list.appendChild(btn);
+        }
+      }
+      show('screen-member');
+    }
+  }, () => {
+    if (!initialized) show('screen-error');
+  });
+
+  window._selectMember = (uuid, name) => {
+    selectedId   = uuid;
+    selectedName = name;
+    document.getElementById('answering-for').textContent = name + ' として回答';
+    show('screen-answer');
+  };
+
+  async function submit(value) {
+    document.getElementById('yes-btn').disabled = true;
+    document.getElementById('no-btn').disabled  = true;
+    try {
+      await updateDoc(ref, {
+        [`answers.${selectedId}.value`]:      value,
+        [`answers.${selectedId}.answeredAt`]: Timestamp.now()
+      });
+      document.getElementById('done-icon').textContent =
+        value === 'yes' ? '✅' : '❌';
+      document.getElementById('done-text').textContent =
+        (value === 'yes' ? '「はい」' : '「いいえ」') + ' と回答しました';
+
+      // onSnapshot が届くまでの暫定進捗表示（自分の回答を +1 してカウント）
+      if (liveData) {
+        const { answered, total } = calcProgress(liveData);
+        const remaining = total - (answered + 1);
+        document.getElementById('done-sub').textContent =
+          remaining <= 0
+            ? '🎉 全員揃いました！'
+            : `✅ あなたの回答が届きました！残り ${remaining} 人の回答を待っています`;
+      }
+
+      show('screen-done');
+      // iOS デバイスのみバナーを表示
+      if (/iPhone|iPad/.test(navigator.userAgent)) {
+        document.getElementById('app-banner').classList.remove('hidden');
+        // App Store ID確定後: document.getElementById('app-store-link').href = 'https://apps.apple.com/jp/app/id{YOUR_ID}';
+      }
+    } catch {
+      alert('送信に失敗しました。もう一度お試しください。');
+      document.getElementById('yes-btn').disabled = false;
+      document.getElementById('no-btn').disabled  = false;
+    }
+  }
+
+  document.getElementById('yes-btn').onclick = () => submit('yes');
+  document.getElementById('no-btn').onclick  = () => submit('no');
+</script>
+</body>
+</html>

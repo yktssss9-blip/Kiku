@@ -61,9 +61,6 @@
 		NC001001001001001001AA01 /* KikuNotificationContent.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = KikuNotificationContent.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		AA000001000000000000001B /* Kiku */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -246,11 +243,12 @@
 				};
 			};
 			buildConfigurationList = AA000001000000000000001D /* Build configuration list for PBXProject "Kiku" */;
-			developmentRegion = en;
+			developmentRegion = ja;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
 				Base,
+				ja,
 			);
 			mainGroup = AA00000100000000000000AA;
 			minimizedProjectReferenceProxies = 1;

@@ -197,6 +197,20 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
+    func scheduleCompletion(question: Question) {
+        let content = UNMutableNotificationContent()
+        content.title = "全員揃いました 🎉"
+        content.body = "「\(question.text)」に全員が回答しました"
+        content.sound = .default
+        content.interruptionLevel = .active
+        let request = UNNotificationRequest(
+            identifier: "completion.\(question.id.uuidString)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
+    }
+
     // MARK: - 送信者アバター生成
 
     @MainActor

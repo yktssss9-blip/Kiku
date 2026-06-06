@@ -12,6 +12,10 @@ struct QuestionDetailView: View {
     @State private var answerToReset: Answer? = nil
     @State private var progressAnimated = false
     @State private var showInviteCopied = false
+    @State private var showLineSent = false
+    @State private var showCompletionBanner = false
+    @State private var shareImage: UIImage? = nil
+    @State private var showShareSheet = false
 
     // 未回答メンバー一覧
     private var pendingAnswers: [Answer] {
@@ -25,6 +29,30 @@ struct QuestionDetailView: View {
     var body: some View {
         List {
             Section { summaryCard }
+
+            if showCompletionBanner {
+                Section {
+                    HStack {
+                        Spacer()
+                        Label("全員揃いました！", systemImage: "party.popper.fill")
+                            .font(.headline).fontWeight(.bold)
+                            .foregroundStyle(.white)
+                        Spacer()
+                    }
+                    .padding(.vertical, 6)
+                    .listRowBackground(Color.green)
+                }
+            }
+
+            if let memo = currentQuestion.memo, !memo.isEmpty {
+                Section {
+                    Text(memo)
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                } header: {
+                    Label("メモ", systemImage: "note.text")
+                }
+            }
 
             Section {
                 Button {
@@ -59,6 +87,30 @@ struct QuestionDetailView: View {
                         Spacer()
                     }
                 }
+
+                Button {
+                    sendViaLine()
+                } label: {
+                    HStack {
+                        Image(systemName: "paperplane.fill")
+                            .foregroundStyle(Color(red: 0.04, green: 0.78, blue: 0.35))
+                        Text("LINEで送る")
+                        Spacer()
+                    }
+                }
+
+                Button {
+                    generateAndShare()
+                } label: {
+                    HStack {
+                        Image(systemName: "square.and.arrow.up.fill")
+                            .foregroundStyle(.white)
+                        Text("結果カードをシェア")
+                            .foregroundStyle(.white)
+                        Spacer()
+                    }
+                }
+                .listRowBackground(Color(white: 0.15))
             }
 
             Section("メンバーの回答") {
@@ -68,6 +120,20 @@ struct QuestionDetailView: View {
             }
         }
         .navigationTitle(question.text)
+        .onChange(of: currentQuestion.isCompleted) { _, isCompleted in
+            if isCompleted {
+                withAnimation { showCompletionBanner = true }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .kikuQuestionCompleted)) { note in
+            guard let q = note.object as? Question, q.id == question.id else { return }
+            withAnimation { showCompletionBanner = true }
+        }
+        .sheet(isPresented: $showShareSheet) {
+            if let image = shareImage {
+                ShareSheet(items: [image])
+            }
+        }
         .navigationBarTitleDisplayMode(.inline)
         .alert("リマインドを送りました", isPresented: $showReminderAlert) {
             Button("OK", role: .cancel) {}
@@ -104,15 +170,10 @@ struct QuestionDetailView: View {
 
     private func copyInviteLink() {
         let q = currentQuestion
-        let inviteURL = "kiku://invite?qid=\(q.id.uuidString)&token=\(q.inviteToken)"
+        let webURL = "https://shigodeki-8e49a.web.app/q/\(q.id.uuidString)?token=\(q.inviteToken)"
         let message = """
         「\(q.text)」に回答してください！
-
-        アプリからタップ：
-        \(inviteURL)
-
-        きくをお持ちでない方はインストール後、上のリンクをタップしてください：
-        https://apps.apple.com/jp/app/id0000000000
+        \(webURL)
         """
         UIPasteboard.general.string = message
         withAnimation { showInviteCopied = true }
@@ -120,6 +181,29 @@ struct QuestionDetailView: View {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             await MainActor.run { withAnimation { showInviteCopied = false } }
         }
+    }
+
+    @MainActor
+    private func generateAndShare() {
+        let members = currentQuestion.answers.map { answer -> MemberCardItem in
+            let friend = friendStore.friend(for: answer.memberId)
+            return MemberCardItem(emoji: friend?.emoji ?? "👤", value: answer.value)
+        }
+        let card = ResultCardView(question: currentQuestion, members: members)
+        let renderer = ImageRenderer(content: card)
+        renderer.scale = 3.0
+        guard let image = renderer.uiImage else { return }
+        shareImage = image
+        showShareSheet = true
+    }
+
+    private func sendViaLine() {
+        let q = currentQuestion
+        let webURL = "https://shigodeki-8e49a.web.app/q/\(q.id.uuidString)?token=\(q.inviteToken)"
+        let text = "「\(q.text)」に回答してください！\n\(webURL)"
+        guard let encoded = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "https://line.me/R/msg/text/\(encoded)") else { return }
+        UIApplication.shared.open(url)
     }
 
     // MARK: - リマインド送信
@@ -308,3 +392,4 @@ struct QuestionDetailView: View {
         )
     }
 }
+

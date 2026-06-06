@@ -2,9 +2,13 @@ import SwiftUI
 import Charts
 
 struct MemberListView: View {
-    @EnvironmentObject private var friendStore:  FriendStore
-    @EnvironmentObject private var pointStore:   PointStore
-    @EnvironmentObject private var profileStore: ProfileStore
+    @EnvironmentObject private var friendStore:   FriendStore
+    @EnvironmentObject private var pointStore:    PointStore
+    @EnvironmentObject private var profileStore:  ProfileStore
+    @EnvironmentObject private var questionStore: QuestionStore
+    @EnvironmentObject private var purchaseStore: PurchaseStore
+
+    @State private var selectedTab = 0
 
     private var rankedEntries: [RankedEntry] {
         let me = Friend(id: profileStore.myId, name: profileStore.name, emoji: profileStore.emoji)
@@ -34,15 +38,34 @@ struct MemberListView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            List {
-                reportHeaderSection
-                rankingSection
-                footerSection
+        VStack(spacing: 0) {
+            Picker("", selection: $selectedTab) {
+                Text("ランキング").tag(0)
+                Text("インサイト").tag(1)
             }
-            .listStyle(.insetGrouped)
-            .navigationTitle("シゴできランキング")
-            .navigationBarTitleDisplayMode(.inline)
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color(UIColor.systemBackground))
+
+            if selectedTab == 0 {
+                NavigationStack {
+                    List {
+                        reportHeaderSection
+                        rankingSection
+                        footerSection
+                    }
+                    .listStyle(.insetGrouped)
+                    .navigationTitle("シゴできランキング")
+                    .navigationBarTitleDisplayMode(.inline)
+                }
+            } else {
+                InsightView()
+                    .environmentObject(questionStore)
+                    .environmentObject(friendStore)
+                    .environmentObject(profileStore)
+                    .environmentObject(purchaseStore)
+            }
         }
     }
 
@@ -242,4 +265,6 @@ private struct RankingRow: View {
         .environmentObject(FriendStore())
         .environmentObject(PointStore())
         .environmentObject(ProfileStore())
+        .environmentObject(QuestionStore())
+        .environmentObject(PurchaseStore())
 }

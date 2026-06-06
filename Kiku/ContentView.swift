@@ -9,7 +9,11 @@ struct ContentView: View {
 
     @EnvironmentObject private var questionStore: QuestionStore
     @EnvironmentObject private var profileStore:  ProfileStore
+    @EnvironmentObject private var friendStore:   FriendStore
+    @EnvironmentObject private var groupStore:    GroupStore
     @EnvironmentObject private var chatStore:     ChatStore
+    @EnvironmentObject private var purchaseStore: PurchaseStore
+    @EnvironmentObject private var templateStore: TemplateStore
 
     /// myId 宛の未回答（pending）質問数
     var pendingNotificationCount: Int {
@@ -25,14 +29,20 @@ struct ContentView: View {
 
     var body: some View {
         TabView {
+            SendTabView()
+                .tabItem {
+                    Label("送る", systemImage: "paperplane.fill")
+                }
+                .environmentObject(questionStore)
+                .environmentObject(friendStore)
+                .environmentObject(groupStore)
+                .environmentObject(profileStore)
+                .environmentObject(purchaseStore)
+                .environmentObject(templateStore)
+
             HomeView()
                 .tabItem {
-                    Label("ホーム", systemImage: "house.fill")
-                }
-
-            InsightView()
-                .tabItem {
-                    Label("インサイト", systemImage: "chart.bar.fill")
+                    Label("フィード", systemImage: "list.bullet")
                 }
 
             ChatListView()
