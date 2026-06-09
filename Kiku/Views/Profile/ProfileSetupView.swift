@@ -12,6 +12,7 @@ struct ProfileSetupView: View {
     @State private var errorMessage     = ""
     @State private var activeHourStart  = 9
     @State private var activeHourEnd    = 12
+    @State private var isGeneratingUsername = false
 
     var canProceed: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
@@ -88,7 +89,7 @@ struct ProfileSetupView: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 4)
 
-                TextField("例: ゆきち", text: $name)
+                TextField("例: 太郎", text: $name)
                     .font(.body)
                     .padding()
                     .background(Color(UIColor.secondarySystemBackground))
@@ -98,9 +99,9 @@ struct ProfileSetupView: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 12)
 
-            // ── ユーザー名入力 ──
+            // ── ユーザー名入力（自動生成・編集可） ──
             VStack(alignment: .leading, spacing: 8) {
-                Text("ユーザー名（友達検索に使います）")
+                Text("ユーザー名（友達検索に使います・自動生成されています。変更も可能です）")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 4)
@@ -111,6 +112,18 @@ struct ProfileSetupView: View {
                     TextField("例: yukichi", text: $username)
                         .autocorrectionDisabled()
                         .autocapitalization(.none)
+
+                    Button {
+                        Task { await regenerateUsername() }
+                    } label: {
+                        if isGeneratingUsername {
+                            ProgressView()
+                        } else {
+                            Image(systemName: "arrow.clockwise.circle.fill")
+                                .foregroundStyle(.blue)
+                        }
+                    }
+                    .disabled(isGeneratingUsername)
                 }
                 .font(.body)
                 .padding()
@@ -199,6 +212,16 @@ struct ProfileSetupView: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 40)
         }
+        .task {
+            guard username.isEmpty else { return }
+            await regenerateUsername()
+        }
+    }
+
+    private func regenerateUsername() async {
+        isGeneratingUsername = true
+        defer { isGeneratingUsername = false }
+        username = await store.generateUniqueUsername()
     }
 
     private func submit() async {

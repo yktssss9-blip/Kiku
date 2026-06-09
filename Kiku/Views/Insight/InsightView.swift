@@ -28,10 +28,33 @@ struct InsightView: View {
 
     private let clockTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
-    private var insights: [FriendInsight] {
+    /// 直近やり取り（回答日時）が新しい順
+    private var sortedFriends: [Friend] {
         friendStore.friends
             .filter { !friendStore.isBlocked($0.id) }
-            .map { buildInsight(for: $0) }
+            .sorted { lastInteraction(with: $0) > lastInteraction(with: $1) }
+    }
+
+    private var insights: [FriendInsight] {
+        sortedFriends.map { buildInsight(for: $0) }
+    }
+
+    /// 無料ユーザーに表示するインサイト（直近やり取りのあった2人まで）
+    private var visibleInsights: [FriendInsight] {
+        purchaseStore.isPro ? insights : Array(insights.prefix(2))
+    }
+
+    /// 無料ユーザーに対してロック表示する残りの友達
+    private var lockedFriends: [Friend] {
+        purchaseStore.isPro ? [] : Array(sortedFriends.dropFirst(2))
+    }
+
+    private func lastInteraction(with friend: Friend) -> Date {
+        questionStore.questions
+            .compactMap { q in
+                q.answers.first { $0.memberId == friend.id && $0.value != "pending" }?.answeredAt
+            }
+            .max() ?? .distantPast
     }
 
     var body: some View {
@@ -45,13 +68,20 @@ struct InsightView: View {
                         emptyState
                     } else {
                         VStack(spacing: 12) {
-                            ForEach(insights) { insight in
+                            ForEach(visibleInsights) { insight in
                                 FriendInsightCard(insight: insight) {
                                     if purchaseStore.isPro {
                                         schedulingFor = insight
                                     } else {
                                         showPaywall = true
                                     }
+                                }
+                            }
+
+                            if !lockedFriends.isEmpty {
+                                lockedSummaryBanner
+                                ForEach(lockedFriends) { friend in
+                                    LockedInsightCard(friend: friend) { showPaywall = true }
                                 }
                             }
                         }
@@ -109,6 +139,29 @@ struct InsightView: View {
         .background(accent.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(accent.opacity(0.2), lineWidth: 1))
+    }
+
+    // MARK: - Locked Summary Banner
+
+    private var lockedSummaryBanner: some View {
+        Button { showPaywall = true } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "crown.fill")
+                    .foregroundStyle(Color(red: 0.85, green: 0.65, blue: 0.0))
+                Text("あと\(lockedFriends.count)人の傾向を見るにはPro")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(14)
+            .background(Color.blue.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.blue.opacity(0.2), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Empty State
@@ -196,11 +249,7 @@ private struct FriendInsightCard: View {
 
             // ── 友達情報 + ベストタイム ──
             HStack(spacing: 12) {
-                Text(insight.friend.emoji)
-                    .font(.title3)
-                    .frame(width: 44, height: 44)
-                    .background(Color(UIColor.tertiarySystemBackground))
-                    .clipShape(Circle())
+                UserAvatarView(emoji: insight.friend.emoji, photoURL: insight.friend.photoURL, size: 44)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(insight.friend.name)
@@ -315,6 +364,45 @@ private struct FriendInsightCard: View {
     }
 }
 
+// MARK: - LockedInsightCard
+
+private struct LockedInsightCard: View {
+    let friend:  Friend
+    let onLock:  () -> Void
+
+    var body: some View {
+        Button(action: onLock) {
+            HStack(spacing: 12) {
+                UserAvatarView(emoji: friend.emoji, photoURL: friend.photoURL, size: 44)
+                    .blur(radius: 4)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(friend.name)
+                        .font(.headline)
+                        .blur(radius: 4)
+                    HStack(spacing: 4) {
+                        Image(systemName: "lock.fill")
+                            .font(.caption2)
+                        Text("Proで傾向を見る")
+                            .font(.subheadline)
+                    }
+                    .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "crown.fill")
+                    .font(.caption)
+                    .foregroundStyle(Color(red: 0.85, green: 0.65, blue: 0.0))
+            }
+            .padding(14)
+        }
+        .buttonStyle(.plain)
+        .background(Color(UIColor.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+}
+
 // MARK: - ScheduledSendSheet
 
 private struct ScheduledSendSheet: View {
@@ -341,11 +429,7 @@ private struct ScheduledSendSheet: View {
 
                 // 送信先 + 予定時刻
                 HStack(spacing: 14) {
-                    Text(insight.friend.emoji)
-                        .font(.largeTitle)
-                        .frame(width: 60, height: 60)
-                        .background(Color(UIColor.secondarySystemBackground))
-                        .clipShape(Circle())
+                    UserAvatarView(emoji: insight.friend.emoji, photoURL: insight.friend.photoURL, size: 60)
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(insight.friend.name)

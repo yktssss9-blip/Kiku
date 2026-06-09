@@ -187,7 +187,7 @@ struct QuestionDetailView: View {
     private func generateAndShare() {
         let members = currentQuestion.answers.map { answer -> MemberCardItem in
             let friend = friendStore.friend(for: answer.memberId)
-            return MemberCardItem(emoji: friend?.emoji ?? "👤", value: answer.value)
+            return MemberCardItem(emoji: friend?.emoji ?? "👤", photoURL: friend?.photoURL, value: answer.value)
         }
         let card = ResultCardView(question: currentQuestion, members: members)
         let renderer = ImageRenderer(content: card)
@@ -213,19 +213,10 @@ struct QuestionDetailView: View {
             guard let friend = friendStore.friend(for: answer.memberId) else { return nil }
             return (answer, friend)
         }
-
-        for target in targets {
-            NotificationManager.shared.scheduleQuestion(
-                questionId:   question.id,
-                memberId:     target.friend.id,
-                memberName:   target.friend.name,
-                memberEmoji:  target.friend.emoji,
-                questionText: question.text,
-                choices:      currentQuestion.answerChoices
-            )
-        }
-
         reminderCount = targets.count
+        if !targets.isEmpty {
+            questionStore.sendReminder(questionId: question.id)
+        }
         showReminderAlert = true
     }
 
@@ -310,7 +301,7 @@ struct QuestionDetailView: View {
         }()
 
         return HStack(alignment: starComment != nil ? .top : .center) {
-            Text(friend?.emoji ?? "👤").font(.title3)
+            UserAvatarView(emoji: friend?.emoji ?? "👤", photoURL: friend?.photoURL, size: 36)
             VStack(alignment: .leading, spacing: 2) {
                 Text(friend?.name ?? "不明").font(.body)
                 if let comment = starComment {
@@ -359,6 +350,8 @@ struct QuestionDetailView: View {
             return badgePill("○ はい", bg: Color.green.opacity(0.12), fg: .green)
         } else if value == "no" {
             return badgePill("✕ いいえ", bg: Color.red.opacity(0.10), fg: .red)
+        } else if value == "read" {
+            return badgePill("👀 既読", bg: Color.gray.opacity(0.12), fg: .gray)
         } else if isTimeValue(value) {
             return badgePill("🕐 \(value)", bg: Color.blue.opacity(0.12), fg: .blue)
         } else if value.hasPrefix("yes:") {

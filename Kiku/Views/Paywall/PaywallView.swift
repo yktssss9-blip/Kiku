@@ -1,69 +1,166 @@
 import SwiftUI
 import RevenueCat
-import RevenueCatUI
 
 struct PaywallView: View {
     @EnvironmentObject private var purchaseStore: PurchaseStore
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        if let offering = purchaseStore.currentOffering {
-            OfferingView(offering: offering)
-        } else {
-            ProgressView()
-                .task { await purchaseStore.refresh() }
+        Group {
+            if let offering = purchaseStore.currentOffering {
+                ProPaywallContent(offering: offering)
+            } else if purchaseStore.isOfferingLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                retryView
+            }
         }
+        .task {
+            if purchaseStore.currentOffering == nil && !purchaseStore.isOfferingLoading {
+                await purchaseStore.refresh()
+            }
+        }
+    }
+
+    private var retryView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "exclamationmark.circle")
+                .font(.system(size: 44))
+                .foregroundStyle(.secondary)
+            Text("プランを読み込めませんでした")
+                .foregroundStyle(.secondary)
+            Button("再試行") {
+                Task { await purchaseStore.refresh() }
+            }
+            .buttonStyle(.bordered)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
-// MARK: - OfferingView
+// MARK: - ProPaywallContent
 
-private struct OfferingView: View {
+private struct ProPaywallContent: View {
     let offering: Offering
     @EnvironmentObject private var purchaseStore: PurchaseStore
     @Environment(\.dismiss) private var dismiss
+    @State private var selectedPackage: Package?
+
+    private let features: [(String, String)] = [
+        ("📤", "テンプレートから質問を送信"),
+        ("⚡️", "自動送信スケジュール"),
+        ("📊", "インサイト（全友達の回答傾向）"),
+        ("🎨", "自由記述・星評価・絵文字の回答タイプ"),
+        ("♾️", "Stop Time 無制限"),
+        ("👑", "支配者称号の解放"),
+    ]
 
     var body: some View {
-        NavigationStack {
+        ZStack(alignment: .top) {
             ScrollView {
-                VStack(spacing: 24) {
-                    header
-                    packageList
+                VStack(spacing: 28) {
+                    Spacer().frame(height: 48)
+                    headerSection
+                    featuresCard
+                    packageSection
                     restoreButton
+                    Spacer().frame(height: 96)
                 }
-                .padding()
+                .padding(.horizontal, 20)
             }
-            .navigationTitle("Shigodeki Pro")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("閉じる") { dismiss() }
-                }
+
+            closeButton
+
+            VStack {
+                Spacer()
+                purchaseButtonBar
             }
+        }
+        .onAppear {
+            selectedPackage = offering.availablePackages
+                .first(where: { $0.packageType == .annual })
+                ?? offering.availablePackages.first
         }
     }
 
-    private var header: some View {
-        VStack(spacing: 8) {
-            Text("👑")
-                .font(.system(size: 64))
-            Text("Shigodeki Pro にアップグレード")
-                .font(.title2.bold())
-                .multilineTextAlignment(.center)
-            Text("すべての機能をフル活用しましょう")
+    // MARK: - Close Button
+
+    private var closeButton: some View {
+        HStack {
+            Spacer()
+            Button("閉じる") { dismiss() }
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+        }
+    }
+
+    // MARK: - Header
+
+    private var headerSection: some View {
+        VStack(spacing: 12) {
+            RoundedRectangle(cornerRadius: 22)
+                .fill(Color(.label))
+                .frame(width: 88, height: 88)
+                .overlay {
+                    Image(systemName: "bubble.left.and.bubble.right.fill")
+                        .font(.system(size: 38))
+                        .foregroundStyle(Color(.systemBackground))
+                }
+
+            Text("きく Pro")
+                .font(.title.bold())
+
+            Text("コア機能は無料。\nProでもっと便利に、もっと楽しく。")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
         }
-        .padding(.top, 16)
     }
 
-    private var packageList: some View {
-        VStack(spacing: 12) {
+    // MARK: - Features Card
+
+    private var featuresCard: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(features.enumerated()), id: \.offset) { i, feature in
+                HStack(spacing: 12) {
+                    Text(feature.0)
+                        .font(.title3)
+                        .frame(width: 32)
+                    Text(feature.1)
+                        .font(.subheadline)
+                    Spacer()
+                    Image(systemName: "checkmark")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+
+                if i < features.count - 1 {
+                    Divider().padding(.leading, 60)
+                }
+            }
+        }
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    // MARK: - Package Selection
+
+    private var packageSection: some View {
+        VStack(spacing: 10) {
             ForEach(offering.availablePackages, id: \.identifier) { package in
-                PackageRow(package: package)
+                PackageCard(
+                    package: package,
+                    isSelected: selectedPackage?.identifier == package.identifier
+                )
+                .onTapGesture { selectedPackage = package }
             }
         }
     }
+
+    // MARK: - Restore Button
 
     private var restoreButton: some View {
         Button("購入を復元する") {
@@ -76,38 +173,131 @@ private struct OfferingView: View {
         .foregroundStyle(.secondary)
         .disabled(purchaseStore.isLoading)
     }
+
+    // MARK: - Purchase Button Bar
+
+    private var purchaseButtonBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            Button {
+                guard let package = selectedPackage else { return }
+                Task {
+                    try? await purchaseStore.purchase(package: package)
+                    if purchaseStore.isPro { dismiss() }
+                }
+            } label: {
+                Group {
+                    if purchaseStore.isLoading {
+                        ProgressView().tint(.white)
+                    } else if let pkg = selectedPackage {
+                        Text(purchaseLabel(for: pkg))
+                    }
+                }
+                .font(.headline)
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(Color(.label), in: RoundedRectangle(cornerRadius: 14))
+            }
+            .disabled(purchaseStore.isLoading || selectedPackage == nil)
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            .padding(.bottom, 32)
+            .background(.regularMaterial)
+        }
+    }
+
+    private func purchaseLabel(for package: Package) -> String {
+        let price = package.localizedPriceString
+        switch package.packageType {
+        case .annual:  return "\(price) で購入（年額）"
+        case .monthly: return "\(price) で購入"
+        default:       return "\(price) で購入"
+        }
+    }
 }
 
-// MARK: - PackageRow
+// MARK: - PackageCard
 
-private struct PackageRow: View {
+private struct PackageCard: View {
     let package: Package
-    @EnvironmentObject private var purchaseStore: PurchaseStore
-    @Environment(\.dismiss) private var dismiss
+    let isSelected: Bool
 
     var body: some View {
-        Button {
-            Task {
-                try? await purchaseStore.purchase(package: package)
-                if purchaseStore.isPro { dismiss() }
-            }
-        } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(package.storeProduct.localizedTitle)
+        HStack {
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 8) {
+                    Text(planTitle)
                         .font(.headline)
-                    Text(package.storeProduct.localizedDescription)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(isSelected ? .white : .primary)
+                    if isRecommended {
+                        Text("おすすめ")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(isSelected ? Color.white.opacity(0.25) : Color.accentColor.opacity(0.15))
+                            .foregroundStyle(isSelected ? .white : .accentColor)
+                            .clipShape(Capsule())
+                    }
                 }
-                Spacer()
-                Text(package.localizedPriceString)
-                    .font(.headline)
+                Text(planDescription)
+                    .font(.caption)
+                    .foregroundStyle(isSelected ? .white.opacity(0.7) : .secondary)
             }
-            .padding()
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(package.localizedPriceString)
+                    .font(.title3.bold())
+                    .foregroundStyle(isSelected ? .white : .primary)
+                if let period = pricePeriod {
+                    Text(period)
+                        .font(.caption)
+                        .foregroundStyle(isSelected ? .white.opacity(0.7) : .secondary)
+                }
+            }
         }
-        .buttonStyle(.plain)
-        .disabled(purchaseStore.isLoading)
+        .padding(16)
+        .background {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 14).fill(Color(.label))
+            } else {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Color(.systemBackground))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color(.systemGray4), lineWidth: 1)
+                    }
+            }
+        }
+    }
+
+    private var planTitle: String {
+        switch package.packageType {
+        case .annual:   return "年額プラン"
+        case .monthly:  return "月額プラン"
+        case .lifetime: return "買い切り"
+        default: return package.storeProduct.localizedTitle
+        }
+    }
+
+    private var planDescription: String {
+        switch package.packageType {
+        case .annual:   return "2ヶ月分お得・月換算約408円"
+        case .monthly:  return "いつでもキャンセル可能"
+        case .lifetime: return "一度の支払いで永久に使える"
+        default: return package.storeProduct.localizedDescription
+        }
+    }
+
+    private var isRecommended: Bool {
+        package.packageType == .annual || package.packageType == .lifetime
+    }
+
+    private var pricePeriod: String? {
+        switch package.packageType {
+        case .annual:  return "/年"
+        case .monthly: return "/月"
+        default: return nil
+        }
     }
 }

@@ -9,18 +9,23 @@ struct PointTitle {
 
     var display: String { "\(emoji) \(label)" }
 
-    /// rank: 1始まりの順位、outOf: 友達の総人数
+    /// rank: 1始まりの順位、outOf: 友達の総人数、isPro: 本人がProプラン加入済みか
     /// 10人未満は「支配者」「CEO」を解放せず7段階、10人以上で全9段階を開放
-    init(rank: Int, outOf total: Int) {
+    /// 「支配者」は1位かつProプラン加入者のみ。Pro未加入の1位は次点の「CEO」にフォールバックする
+    init(rank: Int, outOf total: Int, isPro: Bool) {
         let fraction = total > 1 ? Double(rank - 1) / Double(total - 1) : 0.0
 
-        let tier: Int
+        var tier: Int
         if total >= 10 {
             // 全9段階（0=支配者 〜 8=新入社員）
             tier = min(Int(fraction * 9), 8)
         } else {
             // 上位2段階（支配者・CEO）は未解放 → 7段階（取締役〜新入社員）にマップ
             tier = min(Int(fraction * 7), 6) + 2
+        }
+
+        if tier == 0 && !isPro {
+            tier = 1
         }
 
         switch tier {
@@ -73,6 +78,17 @@ enum PointTier: String, Codable {
         if elapsed < 180 { return .normal }
         return .late
     }
+}
+
+/// 平均回答速度を、長さに応じて秒・分・時間・日の単位を切り替えて表示する
+func formatAverageSpeed(_ seconds: Double) -> String {
+    let s = Int(seconds.rounded())
+    if s < 60 { return "\(s)秒" }
+    let m = s / 60
+    if m < 60 { return "\(m)分" }
+    let h = m / 60
+    if h < 24 { return "\(h)時間" }
+    return "\(h / 24)日"
 }
 
 // MARK: - ポイント獲得記録

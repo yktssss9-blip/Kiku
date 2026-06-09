@@ -1,5 +1,6 @@
 import SwiftUI
 import EventKit
+import FirebaseAuth
 
 struct ChatView: View {
     let session: ChatSession
@@ -16,6 +17,8 @@ struct ChatView: View {
     @State private var showAlert = false
     @State private var eventStore = EKEventStore()
 
+    private let reactionEmojis = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
+
     enum AnswerFilter: String, CaseIterable {
         case all   = "全員"
         case yes   = "はい"
@@ -23,7 +26,7 @@ struct ChatView: View {
     }
 
     private var currentSession: ChatSession? {
-        chatStore.sessions.first { $0.id == session.id }
+        chatStore.session(for: session.questionId)
     }
 
     private var filteredMessages: [ChatMessage] {
@@ -45,7 +48,7 @@ struct ChatView: View {
                 ScrollView {
                     LazyVStack(spacing: 12) {
                         ForEach(filteredMessages) { message in
-                            MessageBubble(message: message, myEmoji: profileStore.emoji)
+                            MessageBubble(message: message, myEmoji: profileStore.emoji, sessionId: session.id)
                                 .contextMenu {
                                     messageContextMenu(for: message)
                                 }
@@ -69,6 +72,12 @@ struct ChatView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             chatStore.markAsRead(sessionId: session.id)
+            NotificationManager.shared.activeChatQuestionId = session.questionId
+        }
+        .onDisappear {
+            if NotificationManager.shared.activeChatQuestionId == session.questionId {
+                NotificationManager.shared.activeChatQuestionId = nil
+            }
         }
         .sheet(item: $shareItem) { item in
             ShareSheet(items: [item.value])
@@ -84,6 +93,16 @@ struct ChatView: View {
 
     @ViewBuilder
     private func messageContextMenu(for message: ChatMessage) -> some View {
+        ForEach(reactionEmojis, id: \.self) { emoji in
+            Button {
+                chatStore.toggleReaction(emoji: emoji, messageId: message.id, sessionId: session.id, senderId: profileStore.myId)
+            } label: {
+                Text(emoji)
+            }
+        }
+
+        Divider()
+
         Button {
             UIPasteboard.general.string = message.text
         } label: {
@@ -239,12 +258,13 @@ struct ChatView: View {
         case .no:  channel = .no
         }
         chatStore.send(
-            text:        trimmed,
-            isFromMe:    true,
-            senderName:  profileStore.name,
-            senderEmoji: profileStore.emoji,
-            channel:     channel,
-            to:          session.id
+            text:              trimmed,
+            isFromMe:          true,
+            senderName:        profileStore.name,
+            senderEmoji:       profileStore.emoji,
+            channel:           channel,
+            senderFirebaseUID: Auth.auth().currentUser?.uid,
+            to:                session.id
         )
         inputText = ""
     }
@@ -274,13 +294,45 @@ struct ShareSheet: UIViewControllerRepresentable {
 struct MessageBubble: View {
     let message: ChatMessage
     let myEmoji: String
+    let sessionId: UUID
+
+    @EnvironmentObject private var chatStore: ChatStore
+    @EnvironmentObject private var profileStore: ProfileStore
 
     var body: some View {
-        if message.isFromMe {
-            myBubble
-        } else {
-            theirBubble
+        VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
+            if message.isFromMe {
+                myBubble
+            } else {
+                theirBubble
+            }
+            if !message.reactions.isEmpty {
+                reactionBadgeRow
+            }
         }
+    }
+
+    private var reactionBadgeRow: some View {
+        HStack(spacing: 6) {
+            ForEach(message.reactions.keys.sorted(), id: \.self) { emoji in
+                let senders = message.reactions[emoji] ?? []
+                let isMine  = senders.contains(profileStore.myId.uuidString)
+                Button {
+                    chatStore.toggleReaction(emoji: emoji, messageId: message.id, sessionId: sessionId, senderId: profileStore.myId)
+                } label: {
+                    HStack(spacing: 3) {
+                        Text(emoji).font(.caption)
+                        Text("\(senders.count)").font(.caption2).foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(isMine ? Color.blue.opacity(0.15) : Color(UIColor.secondarySystemBackground))
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, message.isFromMe ? 38 : 40)
     }
 
     private var myBubble: some View {

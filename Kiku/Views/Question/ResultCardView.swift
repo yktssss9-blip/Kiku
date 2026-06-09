@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MemberCardItem {
     let emoji: String
+    let photoURL: String?
     let value: String
 }
 
@@ -88,13 +89,7 @@ struct ResultCardView: View {
 
     private func memberCell(_ m: MemberCardItem) -> some View {
         ZStack(alignment: .bottomTrailing) {
-            ZStack {
-                Circle()
-                    .fill(Color(white: 0.12))
-                    .frame(width: 50, height: 50)
-                Text(m.emoji)
-                    .font(.system(size: 26))
-            }
+            UserAvatarView(emoji: m.emoji, photoURL: m.photoURL, size: 50)
             Text(statusEmoji(m.value))
                 .font(.system(size: 14))
                 .offset(x: 3, y: 3)

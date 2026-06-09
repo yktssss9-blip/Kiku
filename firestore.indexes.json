@@ -1,0 +1,13 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "templates",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "schedule.isEnabled", "order": "ASCENDING" },
+        { "fieldPath": "schedule.nextSendAt", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

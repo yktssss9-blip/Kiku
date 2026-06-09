@@ -2,7 +2,7 @@
 
 ## プロジェクト概要
 
-グループ向けの Yes/No 質問アプリ。主催者が質問を作成し、メンバーが通知・Live Activity・アプリ内 UI で回答する iOS アプリ。
+グループ向けの質問アプリ。主催者が質問を作成し、メンバーが通知・Live Activity・アプリ内 UI で回答する iOS アプリ。回答タイプは Yes/No のほか、時間・自由記述・星評価・絵文字に対応（詳細は後述の「回答タイプ（AnswerChoice）」参照）。
 
 - **プラットフォーム**: iOS 17+ / SwiftUI / Swift 5.9
 - **バックエンド**: Firebase（Firestore + Auth + Messaging）/ UserDefaults はローカルキャッシュとして併用
@@ -21,8 +21,8 @@
 | Development Team | `TT6KR8QU45` |
 | UserDefaults suite | `group.com.yukichi.kiku`（App Group 共有）|
 
-> ⚠️ 無料の個人 Apple Developer アカウントのため、**Time Sensitive Notifications は使用不可**。  
-> `.entitlements` から削除済み。通知の `interruptionLevel` は `.active`。
+> ✅ 2026-06-08 時点で有料 Apple Developer Program に登録済み。以前の「無料アカウントのため Time Sensitive Notifications 使用不可」という制約は解消された。  
+> ただし `.entitlements` からは削除済みのまま・通知の `interruptionLevel` も `.active` のままで、再有効化の実装は未着手。再度使う場合は `.entitlements` に追加し `interruptionLevel: .timeSensitive` に変更する。
 
 ---
 
@@ -32,28 +32,36 @@
 Kiku/
 ├── Kiku/                        # メインアプリ
 │   ├── KikuApp.swift            # エントリポイント・EnvironmentObject 注入
-│   ├── ContentView.swift        # TabView（グループ/友達/チャット/プロフィール）
+│   ├── ContentView.swift        # TabView（送る/フィード/チャット/ランキング/設定）
 │   ├── Models/
 │   │   ├── SharedStore.swift    # Question / Answer / Friend / KikuGroup 型定義
+│   │   ├── AnswerChoice.swift   # 回答タイプ定義（yes/no/時間/自由記述/星評価/絵文字）
+│   │   ├── AuthStore.swift      # Firebase Auth（Apple Sign In）・アカウント削除
 │   │   ├── QuestionStore.swift  # 質問管理 + 回答処理 + ポイント連携
 │   │   ├── FriendStore.swift    # 友達管理
-│   │   ├── GroupStore.swift     # グループ管理
+│   │   ├── GroupStore.swift     # グループ管理（ローカルのみ・Firestore未移行）
 │   │   ├── ChatStore.swift      # チャット管理（回答解放チャット）
 │   │   ├── ProfileStore.swift   # 自分のプロフィール
 │   │   ├── StatusStore.swift    # ステータス投稿
 │   │   ├── PointRecord.swift    # PointTitle / PointTier / PointRecord 型
 │   │   ├── PointStore.swift     # ポイント集計・永続化（直近7日間）
+│   │   ├── TemplateStore.swift  # 質問テンプレート + 自動送信スケジュール
+│   │   ├── PurchaseStore.swift  # RevenueCat連携（Proプラン判定・購入）
 │   │   ├── ActivityManager.swift# Live Activity 起動管理
 │   │   └── KikuActivityAttributes.swift # Live Activity 属性定義（ローカル）
 │   ├── ViewModels/
 │   │   ├── AnswerIntent.swift   # AppIntent 実装（Live Activity ボタン処理）
 │   │   └── NotificationManager.swift # UNUserNotificationCenter 管理
 │   └── Views/
-│       ├── Group/               # GroupDetailView, GroupCreateView
-│       ├── Question/            # QuestionDetailView, QuestionCreateView, AnswerView, BroadcastQuestionView
-│       ├── Member/              # MemberListView（ランキング表）, MemberAddView
+│       ├── Home/                # HomeView（フィード）, SendTabView（送るタブ）, QuestionComposerView, QuestionFeedCard, TemplateListSheet
+│       ├── Group/               # GroupDetailView, GroupCreateView, GroupEditView
+│       ├── Question/            # QuestionDetailView, QuestionCreateView, AnswerView, ResultCardView
+│       ├── Member/              # MemberListView（ランキング表）, MemberAddView, QRCodeView, QRScannerView
+│       ├── Insight/             # InsightView（友達の回答傾向インサイト・自動送信設定、Pro限定）
 │       ├── Chat/                # ChatListView, ChatView
-│       ├── Profile/             # ProfileSettingsView, ProfileSetupView
+│       ├── Notification/        # NotificationInboxView（未回答の通知一覧）
+│       ├── Paywall/             # PaywallView（RevenueCatUI ペイウォール）
+│       ├── Profile/             # LoginView, ProfileSetupView, ProfileSettingsView, InviteSetupView
 │       └── Status/              # StatusPostView
 ├── KikuWidget/                  # Widget Extension（Live Activity）
 │   ├── KikuWidgetBundle.swift
@@ -129,16 +137,71 @@ struct AnswerIntent: AppIntent, LiveActivityIntent {
 - 最初のメッセージとして「「{question}」に ✅ はい と回答しました」が自動挿入
 - `ChatSession` は `answerValue: String` を保持（後方互換 Codable デコーダ実装済み）
 
+### 回答タイプ（AnswerChoice）
+
+`Models/AnswerChoice.swift` で yes/no 以外の回答タイプを定義済み・実装済み。
+
+| タイプ | 内容 |
+|---|---|
+| `.yes` / `.no` | 通常の Yes/No |
+| `.time` | 時刻ピッカーで回答 |
+| `.freeText` | 自由記述 |
+| `.star` | 星評価 + コメント（`AnswerView` の `.starComment` ステップ） |
+| `.emoji` | 絵文字スタンプで回答 |
+
+- `Question.answerChoices` で質問ごとに有効な選択肢を保持し、`AnswerView` が `hasTime` / `hasStar` / `hasEmoji` を見て表示を切り替える
+- 通知アクション（長押しで回答）も各タイプに対応済み
+
+### Pro プラン（RevenueCat）
+
+- `KikuApp.swift` で `Purchases.configure(withAPIKey:)` により起動時に設定
+- `PurchaseStore`: `entitlements["Shigodeki Pro"]` を見て `isPro` を判定。`refresh()` / `purchase()` / `restorePurchases()` を提供
+- `PaywallView`（`Views/Paywall/`）: RevenueCatUI の `OfferingView` を表示
+- Pro 限定機能: テンプレートからの送信（`SendTabView`）、自動送信スケジュール（`InsightView`）
+
+### テンプレート・自動送信（TemplateStore）
+
+- `TemplateStore`: 質問テンプレートの CRUD + Firestore 同期 + `ScheduleConfig`（毎日/毎週の繰り返し設定・`nextSendAt`）
+- テンプレート保存時に `recipientUIDs`/`recipientMemberMap`/`memberNames`（`Friend.firebaseUID` から解決）も Firestore に保存し、Cloud Functions が宛先を解決できるようにしている（`QuestionStore.firestoreData` と同じパターン）
+- 自動送信は `functions/src/index.ts` の `sendScheduledTemplates`（`onSchedule`、5分おき実行）で実装済み: `collectionGroup("templates")` を `schedule.isEnabled == true && nextSendAt <= now` で横断検索 → 該当テンプレートから `/questions/{questionId}` を新規作成 → `repeatType`/`hour`/`minute`/`weekdays` から次回 `nextSendAt` を計算して更新。質問作成により既存の `notifyOnQuestionCreated` が連鎖し通知/Live Activityも自動送信される
+- UI: `TemplateListSheet`（テンプレート選択）、`InsightView` 内の `ScheduledSendSheet`（自動送信設定）
+
+### インサイト（InsightView）
+
+- `Views/Insight/InsightView.swift`: 友達ごとの「回答しやすい時間帯」「平均回答速度」などの傾向を可視化
+- `MemberListView` 内のタブとして統合。Pro プラン限定機能
+
+### 通知インボックス（NotificationInboxView）
+
+- `Views/Notification/NotificationInboxView.swift`: 自分宛の未回答（pending）質問の一覧を表示
+- `HomeView` のバナーから遷移
+
+### アカウント削除（AuthStore.deleteAccount）
+
+- `AuthStore.deleteAccount() async -> String?`: 以下を順に実行し、成功時 `nil` / 失敗時エラーメッセージを返す
+  1. `usernames/{username}` の解放
+  2. 自分が作成した `questions` / `chats`（`createdBy == uid`）を一括削除
+  3. `users/{uid}/points/*` サブコレクション削除
+  4. `users/{uid}` ドキュメント削除
+  5. Live Activity 全終了（`ActivityManager.endAll()`）
+  6. ローカル UserDefaults（標準 + App Group）の `kiku.*` / `answer.*` キー削除（`kiku.isDark` 等の表示設定は維持）
+  7. `Auth.auth().currentUser?.delete()` で Firebase Auth アカウント自体を削除
+- `requiresRecentLogin` エラー時は専用メッセージを返す（再サインインを促す）
+- UI: `SettingsView`（`ContentView.swift`）の「アカウント」セクション。写真削除と同じ `confirmationDialog` パターンで確認
+
 ### EnvironmentObject の注入（KikuApp.swift）
 
 ```swift
-@StateObject private var questionStore  = QuestionStore()
-@StateObject private var friendStore    = FriendStore()
-@StateObject private var groupStore     = GroupStore()
-@StateObject private var chatStore      = ChatStore()
-@StateObject private var profileStore   = ProfileStore()
-@StateObject private var statusStore    = StatusStore()
-@StateObject private var pointStore     = PointStore()
+@StateObject private var authStore     = AuthStore()
+@StateObject private var profileStore  = ProfileStore()
+@StateObject private var friendStore   = FriendStore()
+@StateObject private var groupStore    = GroupStore()
+@StateObject private var questionStore = QuestionStore()
+@StateObject private var statusStore   = StatusStore()
+@StateObject private var chatStore     = ChatStore()
+@StateObject private var pointStore    = PointStore()
+@StateObject private var templateStore = TemplateStore()
+@StateObject private var purchaseStore = PurchaseStore()
 
 // onAppear で連携
 questionStore.pointStore = pointStore
@@ -146,46 +209,34 @@ questionStore.pointStore = pointStore
 
 ---
 
-## 現在の状態（2026-05-28 時点）
+## 現在の状態（2026-06-07 時点）
 
 ### 実装済み ✅
-- グループ作成・質問送信
+- グループ作成・質問送信（`SendTabView`）、フィード（`HomeView`）
 - Live Activity（Dynamic Island + ロック画面）でのはい/いいえボタン
-- 通知長押しでのはい/いいえ回答
+- 通知長押しでの回答（yes/no/時間/自由記述/星評価/絵文字 — `AnswerChoice` 全タイプ対応）
 - 回答後チャット解放（回答内容も表示）
 - シゴできポイントシステム（速度ティア・7日間ウィンドウ）
-- 友達タブのランキング表（順位バッジ・称号・ポイント合計・履歴展開）
+- ランキングタブ（順位バッジ・称号・ポイント合計・履歴展開）、インサイト（友達の回答傾向、Pro限定）
 - プロフィール画面にポイント累計・履歴ページ
+- 通知インボックス（未回答の質問一覧）
+- テンプレート + 自動送信スケジュール（Cloud Functions `sendScheduledTemplates`、Pro限定）
+- Pro プラン課金（RevenueCat / `PurchaseStore` / `PaywallView`）
+- アカウント削除（`AuthStore.deleteAccount()`、設定画面から実行可能）
 - QuestionDetailView: 集計カード・リマインド・Live Activity送信・メンバー回答一覧（ポイントティア表示）
 - **Firebase 実装済み**:
-  - 匿名認証（Anonymous Auth）→ Apple Developer承認後に Apple Sign In へ切り替え予定
-  - ProfileStore / QuestionStore / ChatStore / PointStore → Firestore リアルタイム同期
+  - **Apple Sign In 認証**（匿名認証から切り替え済み。`LoginView` で `SignInWithAppleButton` を表示、`AuthStore` に実装あり）
+  - ProfileStore / QuestionStore / ChatStore / PointStore / TemplateStore → Firestore リアルタイム同期
   - ユーザー名検索による友達追加（`/usernames/{username}` コレクション）
-  - FCMトークン登録コード（APNsキー登録後に通知送信が可能になる）
+  - FCMトークン登録コード（`/users/{uid}` の `fcmToken` に保存済み）。配信側 Cloud Functions も実装・デプロイ済み（`functions/src/index.ts` の `notifyOnQuestionCreated`、Blazeプラン移行済み）。残作業は APNs キー設定と実機確認のみ
 
 ### 未実装 / 検討中 🚧
 
-#### Firebase 残作業（優先度高）
-- **Apple Sign In への切り替え**: Apple Developer Program 承認後に実施
-  1. Xcode → Signing & Capabilities → `+Capability` → Sign in with Apple を追加
-  2. Firebase Console → Authentication → Apple を有効化
-  3. `AuthStore.swift` に Apple Sign In 実装を追加（`ASAuthorizationAppleIDProvider` + `OAuthProvider.appleCredential`）
-  4. `LoginView.swift` を作成して `SignInWithAppleButton` を配置
-  5. `KikuApp.swift` の `WindowGroup` で `authStore.user == nil` のとき `LoginView` を表示
+- **FCM プッシュ通知（他ユーザーへの通知の配信）**: Cloud Functions（`notifyOnQuestionCreated`）は実装・デプロイ済み、Blaze プランへのアップグレードも完了。残るのは APNs 認証キー（`.p8`）の作成・Firebase Console へのアップロードと、実機 2 台での配信動作確認
 
-- **FCM プッシュ通知（他ユーザーへの通知）**: Apple Developer 承認 + Firebase Blaze プランへのアップグレードが必要
-  1. developer.apple.com → Keys → Apple Push Notifications service (APNs) キーを作成・ダウンロード
-  2. Firebase Console → プロジェクト設定 → Cloud Messaging → APNs認証キー（`.p8`）をアップロード
-  3. Firebase Blaze プランにアップグレード（Cloud Functions を使うため）
-  4. Cloud Functions で Firestore トリガーを実装:
-     - `/questions/{questionId}` に新規ドキュメント作成 → 宛先ユーザーの `fcmToken` を取得して通知送信
-  5. FCMトークンは `/users/{uid}` の `fcmToken` フィールドにすでに保存済み
+- **GroupStore → Firestore 移行**: 現在もローカル（UserDefaults）のまま。グループをFirestoreに保存してメンバー間で共有できるようにする
 
-- **GroupStore → Firestore 移行**: 現在はローカルのまま。グループをFirestoreに保存してメンバー間で共有できるようにする
-
-- **時間回答機能**: 質問タイプを「時間」にして回答時に時刻ピッカー表示
-- **絵文字リアクション**: チャットや質問への絵文字スタンプ
-- **回答選択肢の拡張**: Yes/No 以外（感情・温度計など）の回答タイプ
+- **絵文字リアクション**: チャットへの絵文字スタンプ（`AnswerChoice.emoji` は回答タイプとして実装済みだが、チャットメッセージへのリアクションは別件・未実装）
 - **QuestionDetailView のデザイン刷新**: アイコンが動くフローティング UI を一度実装したが **ユーザーの要望でリバート済み**。別アプローチで再検討予定。
 
 ---
@@ -194,10 +245,12 @@ questionStore.pointStore = pointStore
 
 ### 認証フロー（KikuApp.swift）
 
+Apple Sign In 実装済み（`Kiku.entitlements` に `com.apple.developer.applesignin` 設定済み）。`LoginView` で `SignInWithAppleButton` を表示し、`AuthStore.handleAppleSignIn` が認証情報を処理する。
+
 ```swift
 // 起動時の表示ロジック
 authStore.isLoading → ProgressView
-authStore.user == nil → （将来）LoginView
+authStore.user == nil → LoginView（Apple でサインイン）
 profileStore.isSetupComplete == false → ProfileSetupView
 上記以外 → ContentView
 
@@ -208,9 +261,17 @@ profileStore.isSetupComplete == false → ProfileSetupView
         questionStore.startListening(forUID: user.uid)
         chatStore.startListening(forUID: user.uid)
         pointStore.startListening(forUID: user.uid)
+        templateStore.startListening(forUID: user.uid)
+    } else {
+        questionStore.stopListening()
+        chatStore.stopListening()
+        pointStore.stopListening()
+        templateStore.stopListening()
     }
 }
 ```
+
+> ⚠️ シミュレータでサインインをテストするには、Apple ID でサインイン済みの実機 or シミュレータが必要（匿名認証のフォールバックは無い）。
 
 ### Firestoreコレクション構造
 
@@ -244,7 +305,7 @@ profileStore.isSetupComplete == false → ProfileSetupView
 ### よくある落とし穴（Firebase）
 
 - **`isUpdatingFromFirestore` フラグ**: Firestoreからの更新時に `didSet { save() }` が走って二重書き込みになるのを防いでいる。各Storeに実装済み。
-- **匿名認証のUID**: アプリを削除して再インストールすると新しいUIDが発行される。Apple Sign In切り替え後はデータ引き継ぎ処理が必要。
+- **Apple Sign In の UID**: 匿名認証から Apple Sign In に切り替え済み。`current.link(with: credential)` で既存の匿名アカウントに紐付ける実装になっているため、匿名時代のデータは引き継がれる想定（`AuthStore.signInOrLink`）。
 - **FCMトークン保存タイミング**: `messaging(_:didReceiveRegistrationToken:)` はサインイン前に呼ばれる場合があるため、`Auth.auth().currentUser?.uid` が nil のときは保存されない。サインイン後に `Messaging.messaging().token(completion:)` で再取得して保存する処理が必要になる場合がある。
 
 ---

@@ -1,5 +1,6 @@
 import SwiftUI
 import FirebaseAuth
+import FirebaseFirestore
 import AuthenticationServices
 import CryptoKit
 
@@ -84,6 +85,71 @@ class AuthStore: ObservableObject {
 
     func signOut() {
         try? Auth.auth().signOut()
+    }
+
+    // MARK: - Delete Account
+
+    /// アカウントとすべての関連データを削除する。成功時は nil、失敗時はエラーメッセージを返す。
+    func deleteAccount() async -> String? {
+        guard let user = Auth.auth().currentUser else { return "ユーザーが見つかりません" }
+        let uid = user.uid
+        let db  = Firestore.firestore()
+
+        do {
+            // ユーザー名の予約を解放
+            let userDoc = try? await db.collection("users").document(uid).getDocument()
+            if let username = userDoc?.data()?["username"] as? String, !username.isEmpty {
+                try? await db.collection("usernames").document(username).delete()
+            }
+
+            // 自分が作成した質問を削除
+            let questions = try await db.collection("questions")
+                .whereField("createdBy", isEqualTo: uid).getDocuments()
+            for doc in questions.documents { try? await doc.reference.delete() }
+
+            // 自分が作成したチャットを削除
+            let chats = try await db.collection("chats")
+                .whereField("createdBy", isEqualTo: uid).getDocuments()
+            for doc in chats.documents { try? await doc.reference.delete() }
+
+            // ポイント履歴サブコレクションを削除
+            let points = try await db.collection("users").document(uid)
+                .collection("points").getDocuments()
+            for doc in points.documents { try? await doc.reference.delete() }
+
+            // ユーザードキュメント本体を削除
+            try? await db.collection("users").document(uid).delete()
+
+            // Live Activity をすべて終了
+            await ActivityManager.shared.endAll()
+
+            // ローカルキャッシュ（UserDefaults / App Group）を削除
+            clearLocalData()
+
+            // Firebase Auth アカウントを削除（最後に行う）
+            try await user.delete()
+
+            return nil
+        } catch let error as NSError {
+            if error.code == AuthErrorCode.requiresRecentLogin.rawValue {
+                return "セキュリティのため再ログインが必要です。一度サインアウトしてから再度サインインのうえ、もう一度お試しください。"
+            }
+            return "削除に失敗しました: \(error.localizedDescription)"
+        }
+    }
+
+    private func clearLocalData() {
+        let standard = UserDefaults.standard
+        for key in standard.dictionaryRepresentation().keys
+            where key.hasPrefix("kiku.") && key != "kiku.isDark" {
+            standard.removeObject(forKey: key)
+        }
+
+        guard let appGroup = UserDefaults(suiteName: "group.com.yukichi.kiku") else { return }
+        for key in appGroup.dictionaryRepresentation().keys
+            where key.hasPrefix("kiku.") || key.hasPrefix("answer.") {
+            appGroup.removeObject(forKey: key)
+        }
     }
 
     // MARK: - Nonce helpers

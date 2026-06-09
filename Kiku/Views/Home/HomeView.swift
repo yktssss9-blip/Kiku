@@ -6,7 +6,6 @@ struct HomeView: View {
     @EnvironmentObject private var groupStore:    GroupStore
     @EnvironmentObject private var profileStore:  ProfileStore
     @EnvironmentObject private var chatStore:     ChatStore
-    @EnvironmentObject private var purchaseStore: PurchaseStore
 
     // 自分への未回答バナー用
     private var myPendingCount: Int {
@@ -31,11 +30,15 @@ struct HomeView: View {
         feedQuestions.filter { $0.summary().pending == 0 }
     }
 
-    @State private var showPendingInbox       = false
+    @State private var showPendingInbox        = false
     @State private var questionToDelete: Question? = nil
-    @State private var showDeleteQuestionAlert = false
-    @State private var isCompletedExpanded    = false
-    @State private var showPaywall            = false
+    @State private var showDeleteQuestionAlert  = false
+    @State private var isCompletedExpanded      = false
+    @State private var isFriendRequestExpanded  = true
+
+    private var hasFriendActivity: Bool {
+        !friendStore.pendingRequests.isEmpty || !friendStore.sentRequests.isEmpty
+    }
 
     var body: some View {
         NavigationStack {
@@ -78,6 +81,12 @@ struct HomeView: View {
                         .padding(.horizontal, 16)
                     }
 
+                    // ─── 友達申請セクション ───
+                    if hasFriendActivity {
+                        friendRequestSection
+                            .padding(.horizontal, 16)
+                    }
+
                     // ─── 進行中セクション ───
                     if !pendingQuestions.isEmpty {
                         pendingSection
@@ -110,24 +119,6 @@ struct HomeView: View {
             .background(Color(UIColor.systemGroupedBackground))
             .navigationTitle("フィード")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        if profileStore.isStopTimeActive {
-                            profileStore.isStopTimeActive = false
-                        } else if purchaseStore.isPro || !profileStore.hasUsedFreeStopTimeToday() {
-                            profileStore.isStopTimeActive = true
-                            if !purchaseStore.isPro { profileStore.recordStopTimeActivation() }
-                        } else {
-                            showPaywall = true
-                        }
-                    } label: {
-                        Image(systemName: profileStore.isStopTimeActive ? "pause.circle.fill" : "pause.circle")
-                            .foregroundStyle(profileStore.isStopTimeActive ? Color.orange : Color.secondary)
-                            .imageScale(.large)
-                    }
-                }
-            }
         }
         .alert("質問を削除しますか？", isPresented: $showDeleteQuestionAlert, presenting: questionToDelete) { q in
             Button("削除", role: .destructive) {
@@ -144,9 +135,58 @@ struct HomeView: View {
                 .environmentObject(friendStore)
                 .environmentObject(profileStore)
         }
-        .sheet(isPresented: $showPaywall) {
-            PaywallView()
-                .environmentObject(purchaseStore)
+    }
+
+    // MARK: - 友達申請セクション
+
+    @ViewBuilder
+    private var friendRequestSection: some View {
+        VStack(spacing: 10) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isFriendRequestExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "person.badge.plus")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.blue)
+                    Text("友達申請")
+                        .font(.headline)
+                        .fontWeight(.bold)
+                        .foregroundStyle(.primary)
+                    if !friendStore.pendingRequests.isEmpty {
+                        Text("\(friendStore.pendingRequests.count)")
+                            .font(.caption)
+                            .fontWeight(.bold)
+                            .foregroundStyle(.blue)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(Color.blue.opacity(0.12))
+                            .clipShape(Capsule())
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isFriendRequestExpanded ? 0 : -90))
+                }
+            }
+            .buttonStyle(.plain)
+
+            if isFriendRequestExpanded {
+                VStack(spacing: 8) {
+                    // 受信した申請（pending）
+                    ForEach(friendStore.pendingRequests) { request in
+                        ReceivedFriendRequestCard(request: request)
+                            .environmentObject(friendStore)
+                    }
+                    // 送信した申請（全ステータス）
+                    ForEach(friendStore.sentRequests) { request in
+                        SentFriendRequestCard(request: request)
+                    }
+                }
+            }
         }
     }
 
@@ -257,5 +297,4 @@ struct HomeView: View {
         .environmentObject(GroupStore())
         .environmentObject(ProfileStore())
         .environmentObject(ChatStore())
-        .environmentObject(PurchaseStore())
 }

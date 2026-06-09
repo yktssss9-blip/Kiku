@@ -1,5 +1,5 @@
 import { setGlobalOptions } from "firebase-functions";
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { defineSecret } from "firebase-functions/params";
 import * as logger from "firebase-functions/logger";
@@ -17,6 +17,7 @@ const apnsKeyId = defineSecret("APNS_KEY_ID");
 const apnsTeamId = defineSecret("APNS_TEAM_ID");
 
 const APNS_HOST = "api.push.apple.com";
+const APP_BUNDLE_ID = "com.yukichi.kiku";
 const LIVE_ACTIVITY_PUSH_TYPE_TOPIC = "com.yukichi.kiku.push-type.liveactivity";
 const PROVIDER_TOKEN_TTL_SECONDS = 50 * 60;
 
@@ -36,6 +37,53 @@ function getApnsProviderToken(): string {
 
   cachedProviderToken = { token, issuedAt: now };
   return token;
+}
+
+function sendRegularApnsPush(
+  deviceToken: string,
+  payload: Record<string, unknown>
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const client = http2.connect(`https://${APNS_HOST}`);
+    client.on("error", reject);
+
+    const body = JSON.stringify(payload);
+    const req = client.request({
+      [http2.constants.HTTP2_HEADER_METHOD]: "POST",
+      [http2.constants.HTTP2_HEADER_PATH]: `/3/device/${deviceToken}`,
+      authorization: `bearer ${getApnsProviderToken()}`,
+      "apns-topic": APP_BUNDLE_ID,
+      "apns-push-type": "alert",
+      "apns-priority": "10",
+      "content-length": Buffer.byteLength(body),
+    });
+
+    let status = 0;
+    let responseBody = "";
+
+    req.on("response", (headers) => {
+      status = Number(headers[http2.constants.HTTP2_HEADER_STATUS]);
+    });
+    req.setEncoding("utf8");
+    req.on("data", (chunk) => {
+      responseBody += chunk;
+    });
+    req.on("end", () => {
+      client.close();
+      if (status >= 200 && status < 300) {
+        resolve();
+      } else {
+        reject(new Error(`APNs alert push failed status=${status} body=${responseBody}`));
+      }
+    });
+    req.on("error", (err) => {
+      client.close();
+      reject(err);
+    });
+
+    req.write(body);
+    req.end();
+  });
 }
 
 function sendLiveActivityPushToStart(
@@ -85,6 +133,104 @@ function sendLiveActivityPushToStart(
   });
 }
 
+export const sendReminderRequest = onDocumentCreated(
+  {
+    document: "reminderRequests/{requestId}",
+    secrets: [apnsAuthKey, apnsKeyId, apnsTeamId],
+  },
+  async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) return;
+
+    const { questionId, requestedBy } = snapshot.data() as {
+      questionId: string;
+      requestedBy: string;
+    };
+
+    await snapshot.ref.delete();
+
+    if (!questionId || !requestedBy) return;
+
+    const questionDoc = await admin.firestore().collection("questions").doc(questionId).get();
+    if (!questionDoc.exists) return;
+
+    const question = questionDoc.data()!;
+    if (question.createdBy !== requestedBy) return;
+
+    const answers: Record<string, { value: string }> = question.answers ?? {};
+    const pendingMemberIds = Object.entries(answers)
+      .filter(([, v]) => v.value === "pending")
+      .map(([memberId]) => memberId);
+
+    if (pendingMemberIds.length === 0) return;
+
+    const recipientMemberMap: Record<string, string> = question.recipientMemberMap ?? {};
+    const memberToUid: Record<string, string> = {};
+    for (const [uid, memberId] of Object.entries(recipientMemberMap)) {
+      memberToUid[memberId as string] = uid;
+    }
+
+    const targetUIDs = [...new Set(pendingMemberIds.map((mid) => memberToUid[mid]).filter(Boolean))];
+    if (targetUIDs.length === 0) return;
+
+    const userDocs = await admin
+      .firestore()
+      .getAll(...targetUIDs.map((uid) => admin.firestore().collection("users").doc(uid)));
+
+    const fcmFallbackMessages: admin.messaging.Message[] = [];
+    let apnsSuccessCount = 0;
+
+    for (const doc of userDocs) {
+      const apnsToken = doc.get("apnsDeviceToken") as string | undefined;
+      const fcmToken = doc.get("fcmToken") as string | undefined;
+      const memberId = recipientMemberMap[doc.id];
+
+      if (apnsToken && memberId) {
+        const payload = {
+          aps: {
+            alert: {
+              title: "⏰ まだ回答がありません",
+              body: question.text as string,
+            },
+            sound: "default",
+          },
+          questionId,
+          memberId,
+          isReminder: "true",
+        };
+        try {
+          await sendRegularApnsPush(apnsToken, payload);
+          apnsSuccessCount++;
+        } catch (error) {
+          logger.error(`リマインドAPNs送信失敗 uid=${doc.id}`, error);
+          if (fcmToken) {
+            fcmFallbackMessages.push({
+              token: fcmToken,
+              notification: { title: "⏰ まだ回答がありません", body: question.text as string },
+              data: { questionId, memberId: memberId ?? "", isReminder: "true" },
+            });
+          }
+        }
+      } else if (fcmToken) {
+        fcmFallbackMessages.push({
+          token: fcmToken,
+          notification: { title: "⏰ まだ回答がありません", body: question.text as string },
+          data: { questionId, memberId: memberId ?? "", isReminder: "true" },
+        });
+      }
+    }
+
+    if (fcmFallbackMessages.length > 0) {
+      const response = await admin.messaging().sendEach(fcmFallbackMessages);
+      logger.info(
+        `リマインド送信: questionId=${questionId} APNs=${apnsSuccessCount} FCM成功=${response.successCount} FCM失敗=${response.failureCount}`
+      );
+    } else {
+      logger.info(`リマインド送信: questionId=${questionId} APNs=${apnsSuccessCount}`);
+    }
+  }
+);
+
 export const notifyOnQuestionCreated = onDocumentCreated(
   {
     document: "questions/{questionId}",
@@ -124,23 +270,69 @@ export const notifyOnQuestionCreated = onDocumentCreated(
       ...targetUIDs.map((uid) => admin.firestore().collection("users").doc(uid))
     );
 
-    const messages: admin.messaging.Message[] = [];
+    // 送信者のプロフィールを取得して通知タイトルを構築
+    let notificationTitle = "きく";
+    if (createdBy) {
+      const creatorDoc = await admin.firestore().collection("users").doc(createdBy).get();
+      const creatorName = (creatorDoc.get("name") as string) ?? "";
+      const creatorEmoji = (creatorDoc.get("emoji") as string) ?? "";
+      if (creatorName) {
+        notificationTitle = creatorEmoji
+          ? `${creatorEmoji} ${creatorName}さんから質問が届きました`
+          : `${creatorName}さんから質問が届きました`;
+      }
+    }
+
+    const choices: string[] = Array.isArray(question.choices) ? question.choices : ["yes", "no"];
+    const categoryId = "KIKU_" + choices.map(String).sort().join("_");
+
+    const fcmFallbackMessages: admin.messaging.Message[] = [];
     const pushToStartTargets: { deviceToken: string; uid: string }[] = [];
+    let apnsSuccessCount = 0;
+
     for (const doc of userDocs) {
+      const apnsToken = doc.get("apnsDeviceToken") as string | undefined;
       const fcmToken = doc.get("fcmToken") as string | undefined;
       const memberId = recipientMemberMap[doc.id];
-      if (fcmToken) {
-        const data: Record<string, string> = { questionId };
-        if (memberId) {
-          data.memberId = memberId;
-        }
-        messages.push({
-          token: fcmToken,
-          notification: {
-            title: "きく",
-            body: text,
+
+      if (apnsToken && memberId) {
+        const payload = {
+          aps: {
+            alert: {
+              title: notificationTitle,
+              body: text,
+            },
+            sound: "default",
+            category: categoryId,
+            "mutable-content": 1,
           },
+          questionId,
+          memberId,
+        };
+        try {
+          await sendRegularApnsPush(apnsToken, payload);
+          apnsSuccessCount++;
+        } catch (error) {
+          logger.error(`通知APNs送信失敗 uid=${doc.id}`, error);
+          if (fcmToken) {
+            const data: Record<string, string> = { questionId };
+            if (memberId) data.memberId = memberId;
+            fcmFallbackMessages.push({
+              token: fcmToken,
+              notification: { title: notificationTitle, body: text },
+              data,
+              apns: { payload: { aps: { sound: "default", category: categoryId } } },
+            });
+          }
+        }
+      } else if (fcmToken) {
+        const data: Record<string, string> = { questionId };
+        if (memberId) data.memberId = memberId;
+        fcmFallbackMessages.push({
+          token: fcmToken,
+          notification: { title: notificationTitle, body: text },
           data,
+          apns: { payload: { aps: { sound: "default", category: categoryId } } },
         });
       }
 
@@ -150,11 +342,13 @@ export const notifyOnQuestionCreated = onDocumentCreated(
       }
     }
 
-    if (messages.length > 0) {
-      const response = await admin.messaging().sendEach(messages);
+    if (fcmFallbackMessages.length > 0) {
+      const response = await admin.messaging().sendEach(fcmFallbackMessages);
       logger.info(
-        `通知送信: questionId=${questionId} 成功=${response.successCount} 失敗=${response.failureCount}`
+        `通知送信: questionId=${questionId} APNs=${apnsSuccessCount} FCM成功=${response.successCount} FCM失敗=${response.failureCount}`
       );
+    } else {
+      logger.info(`通知送信: questionId=${questionId} APNs=${apnsSuccessCount}`);
     }
 
     const sentAt = Math.floor(Date.now() / 1000);
@@ -195,6 +389,79 @@ export const notifyOnQuestionCreated = onDocumentCreated(
           error
         );
       }
+    }
+  }
+);
+
+// MARK: - 友達申請通知
+
+export const notifyOnFriendRequest = onDocumentCreated(
+  {
+    document: "friendRequests/{requestId}",
+    secrets: [apnsAuthKey, apnsKeyId, apnsTeamId],
+  },
+  async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) return;
+
+    const data = snapshot.data();
+    const toUID: string = data.toUID ?? "";
+    const fromName: string = data.fromName ?? "きく";
+    const fromEmoji: string = data.fromEmoji ?? "👤";
+    const fromUsername: string = data.fromUsername ?? "";
+    const requestId = event.params.requestId;
+
+    if (!toUID) return;
+
+    const userDoc = await admin.firestore().collection("users").doc(toUID).get();
+    const apnsToken = userDoc.get("apnsDeviceToken") as string | undefined;
+    const fcmToken = userDoc.get("fcmToken") as string | undefined;
+
+    if (!apnsToken && !fcmToken) {
+      logger.info(`notifyOnFriendRequest: トークン未登録 uid=${toUID}`);
+      return;
+    }
+
+    const notificationTitle = `${fromEmoji} ${fromName}さんから友達申請が届きました`;
+    const notificationBody = `@${fromUsername}`;
+    const extraData = {
+      type: "friendRequest",
+      requestId,
+      fromUID: data.fromUID ?? "",
+      fromName,
+      fromEmoji,
+      fromPhotoURL: data.fromPhotoURL ?? "",
+    };
+
+    if (apnsToken) {
+      const payload = {
+        aps: {
+          alert: {
+            title: notificationTitle,
+            body: notificationBody,
+          },
+          sound: "default",
+          category: "FRIEND_REQUEST",
+        },
+        ...extraData,
+      };
+      try {
+        await sendRegularApnsPush(apnsToken, payload);
+        logger.info(`友達申請通知送信(APNs): requestId=${requestId} to=${toUID}`);
+        return;
+      } catch (error) {
+        logger.error(`友達申請APNs送信失敗 uid=${toUID}`, error);
+      }
+    }
+
+    if (fcmToken) {
+      await admin.messaging().send({
+        token: fcmToken,
+        notification: { title: notificationTitle, body: notificationBody },
+        data: extraData,
+        apns: { payload: { aps: { category: "FRIEND_REQUEST", sound: "default" } } },
+      });
+      logger.info(`友達申請通知送信(FCM): requestId=${requestId} to=${toUID}`);
     }
   }
 );
@@ -320,6 +587,86 @@ export const sendScheduledTemplates = onSchedule(
       logger.info(
         `テンプレート自動送信: templateId=${doc.id} owner=${ownerUid} questionId=${questionId} 次回=${nextSendAt.toISOString()}`
       );
+    }
+  }
+);
+
+// MARK: - チャットメッセージ通知
+
+export const notifyOnChatMessage = onDocumentUpdated(
+  {
+    document: "chats/{questionId}",
+    secrets: [apnsAuthKey, apnsKeyId, apnsTeamId],
+  },
+  async (event) => {
+    const before = event.data?.before.data();
+    const after = event.data?.after.data();
+    if (!before || !after) return;
+
+    const beforeMessages = (before.messages as Record<string, unknown>[]) ?? [];
+    const afterMessages = (after.messages as Record<string, unknown>[]) ?? [];
+
+    // 追加された新着メッセージを ID で検出
+    const beforeIds = new Set(beforeMessages.map((m) => m.id as string));
+    const newMessages = afterMessages.filter((m) => !beforeIds.has(m.id as string));
+
+    // senderFirebaseUID があるメッセージ（ユーザーが送信したもの）だけ通知
+    const userMessages = newMessages.filter(
+      (m) => typeof m.senderFirebaseUID === "string" && m.senderFirebaseUID
+    );
+    if (userMessages.length === 0) return;
+
+    const latest = userMessages[userMessages.length - 1];
+    const senderFirebaseUID = latest.senderFirebaseUID as string;
+    const senderName = (latest.senderName as string) ?? "";
+    const senderEmoji = (latest.senderEmoji as string) ?? "";
+    const text = (latest.text as string) ?? "";
+    const questionId = (after.questionId as string) ?? event.params.questionId;
+
+    const participantUIDs = (after.participantUIDs as string[]) ?? [];
+    const recipients = participantUIDs.filter((uid) => uid !== senderFirebaseUID);
+    if (recipients.length === 0) return;
+
+    const notifTitle = senderEmoji ? `${senderEmoji} ${senderName}` : senderName;
+    const extraData = { type: "chatMessage", questionId };
+
+    for (const uid of recipients) {
+      const userDoc = await admin.firestore().collection("users").doc(uid).get();
+      const apnsToken = userDoc.get("apnsDeviceToken") as string | undefined;
+      const fcmToken = userDoc.get("fcmToken") as string | undefined;
+
+      if (!apnsToken && !fcmToken) {
+        logger.info(`notifyOnChatMessage: トークン未登録 uid=${uid}`);
+        continue;
+      }
+
+      if (apnsToken) {
+        const payload = {
+          aps: {
+            alert: { title: notifTitle, body: text },
+            sound: "default",
+            category: "CHAT_MESSAGE",
+          },
+          ...extraData,
+        };
+        try {
+          await sendRegularApnsPush(apnsToken, payload);
+          logger.info(`チャット通知送信(APNs): questionId=${questionId} to=${uid}`);
+          continue;
+        } catch (error) {
+          logger.error(`チャット通知APNs送信失敗 uid=${uid}`, error);
+        }
+      }
+
+      if (fcmToken) {
+        await admin.messaging().send({
+          token: fcmToken,
+          notification: { title: notifTitle, body: text },
+          data: extraData,
+          apns: { payload: { aps: { category: "CHAT_MESSAGE", sound: "default" } } },
+        });
+        logger.info(`チャット通知送信(FCM): questionId=${questionId} to=${uid}`);
+      }
     }
   }
 );

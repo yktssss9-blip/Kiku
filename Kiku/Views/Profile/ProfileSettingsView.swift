@@ -27,6 +27,9 @@ struct ProfileSettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var name              = ""
+    @State private var username           = ""
+    @State private var usernameErrorMessage = ""
+    @State private var isSaving           = false
     @State private var selectedEmoji     = "👤"
     @State private var iconType          = IconType.emoji
     @State private var photoItem: PhotosPickerItem? = nil
@@ -38,9 +41,17 @@ struct ProfileSettingsView: View {
 
     var hasChanges: Bool {
         name != store.name
+        || username != store.username
         || selectedEmoji != store.emoji
         || selectedImage != nil
         || (iconType == .emoji && store.photoData != nil)
+    }
+
+    var canSave: Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty
+            && !username.trimmingCharacters(in: .whitespaces).isEmpty
+            && username.count <= 20
+            && !isSaving
     }
 
     var body: some View {
@@ -113,6 +124,26 @@ struct ProfileSettingsView: View {
                 Section("名前") {
                     TextField("例: ゆきち", text: $name)
                         .autocorrectionDisabled()
+                }
+
+                // ユーザー名
+                Section {
+                    HStack {
+                        Text("@")
+                            .foregroundStyle(.secondary)
+                        TextField("例: yukichi", text: $username)
+                            .autocorrectionDisabled()
+                            .autocapitalization(.none)
+                    }
+                    if !usernameErrorMessage.isEmpty {
+                        Text(usernameErrorMessage)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                } header: {
+                    Text("ユーザー名")
+                } footer: {
+                    Text("友達検索に使われます。20文字以内で、他の人と重複しない名前にしてください")
                 }
 
                 // 絵文字モード
@@ -194,15 +225,20 @@ struct ProfileSettingsView: View {
                     Button("キャンセル") { dismiss() }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("保存") {
-                        saveChanges()
+                    if isSaving {
+                        ProgressView()
+                    } else {
+                        Button("保存") {
+                            Task { await saveChanges() }
+                        }
+                        .fontWeight(.semibold)
+                        .disabled(!canSave)
                     }
-                    .fontWeight(.semibold)
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
             .onAppear {
                 name            = store.name
+                username        = store.username
                 selectedEmoji   = store.emoji
                 iconType        = IconType(store.iconMode)
                 activeHourStart = store.activeHourStart
@@ -296,7 +332,19 @@ struct ProfileSettingsView: View {
 
     // MARK: - Save
 
-    private func saveChanges() {
+    private func saveChanges() async {
+        usernameErrorMessage = ""
+
+        if username != store.username {
+            isSaving = true
+            let error = await store.setUsername(username)
+            isSaving = false
+            if let error {
+                usernameErrorMessage = error
+                return
+            }
+        }
+
         store.name            = name.trimmingCharacters(in: .whitespaces)
         store.activeHourStart = activeHourStart
         store.activeHourEnd   = activeHourEnd
@@ -306,13 +354,17 @@ struct ProfileSettingsView: View {
             // 絵文字を有効化 → 写真データを破棄して排他を保証
             store.emoji     = selectedEmoji
             store.photoData = nil
+            store.photoURL  = nil
             store.iconMode  = .emoji
 
         case .photo:
-            // 写真を有効化 → 新規選択があれば保存、なければ既存を維持
+            // 写真を有効化 → 新規選択があれば保存してStorageにアップロード
             if let img = selectedImage,
                let data = img.jpegData(compressionQuality: 0.7) {
                 store.photoData = data
+                if let url = try? await store.uploadProfilePhoto(data) {
+                    store.photoURL = url
+                }
             }
             // 写真モードに切り替えたが写真がない場合は絵文字にフォールバック
             store.iconMode = store.photoData != nil ? .photo : .emoji

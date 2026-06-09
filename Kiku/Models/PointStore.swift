@@ -74,8 +74,8 @@ class PointStore: ObservableObject {
                      .sorted { $0.earnedAt > $1.earnedAt }
     }
 
-    func title(rank: Int, outOf total: Int) -> PointTitle {
-        PointTitle(rank: rank, outOf: total)
+    func title(rank: Int, outOf total: Int, isPro: Bool) -> PointTitle {
+        PointTitle(rank: rank, outOf: total, isPro: isPro)
     }
 
     // MARK: - 追加
@@ -117,6 +117,17 @@ class PointStore: ObservableObject {
         saveRecordToFirestore(record)
     }
 
+    /// 回答変更時、その質問で得た本人の速度ボーナスを無効化する（送信者ボーナスは対象外）
+    func invalidate(questionId: UUID, memberId: UUID) {
+        guard let record = records.first(where: {
+            $0.questionId == questionId && $0.memberId == memberId
+                && [.fast, .normal, .late].contains($0.tier)
+        }) else { return }
+
+        records.removeAll { $0.id == record.id }
+        deleteRecordFromFirestore(record)
+    }
+
     // MARK: - リセット
 
     func reset() {
@@ -139,6 +150,13 @@ class PointStore: ObservableObject {
         db.collection("users").document(uid)
             .collection("points").document(record.id.uuidString)
             .setData(data)
+    }
+
+    private func deleteRecordFromFirestore(_ record: PointRecord) {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        db.collection("users").document(uid)
+            .collection("points").document(record.id.uuidString)
+            .delete()
     }
 
     private func recordFromFirestore(_ doc: QueryDocumentSnapshot) -> PointRecord? {

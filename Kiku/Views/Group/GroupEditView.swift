@@ -46,7 +46,7 @@ struct GroupEditView: View {
                                 }
                             } label: {
                                 HStack {
-                                    Text(friend.emoji).font(.title3)
+                                    UserAvatarView(emoji: friend.emoji, photoURL: friend.photoURL, size: 30)
                                     Text(friend.name).foregroundStyle(.primary)
                                     Spacer()
                                     if selectedIds.contains(friend.id) {
@@ -84,7 +84,8 @@ struct GroupEditView: View {
                         groupStore.update(
                             id: group.id,
                             name: groupName.trimmingCharacters(in: .whitespaces),
-                            memberIds: Array(selectedIds)
+                            memberIds: Array(selectedIds),
+                            friends: friendStore.friends
                         )
                         dismiss()
                     }

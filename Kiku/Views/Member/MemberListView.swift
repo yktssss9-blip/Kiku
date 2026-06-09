@@ -9,9 +9,10 @@ struct MemberListView: View {
     @EnvironmentObject private var purchaseStore: PurchaseStore
 
     @State private var selectedTab = 0
+    @State private var selectedEntry: RankedEntry?
 
     private var rankedEntries: [RankedEntry] {
-        let me = Friend(id: profileStore.myId, name: profileStore.name, emoji: profileStore.emoji)
+        let me = Friend(id: profileStore.myId, name: profileStore.name, emoji: profileStore.emoji, photoURL: profileStore.photoURL)
         let all = [me] + friendStore.friends
 
         let sorted = all
@@ -58,6 +59,13 @@ struct MemberListView: View {
                     .listStyle(.insetGrouped)
                     .navigationTitle("シゴできランキング")
                     .navigationBarTitleDisplayMode(.inline)
+                    .task { await friendStore.fetchProStatuses() }
+                    .sheet(item: $selectedEntry) { entry in
+                        FriendProfileSheet(entry: entry, outOf: rankedEntries.count)
+                            .environmentObject(pointStore)
+                            .environmentObject(friendStore)
+                            .environmentObject(purchaseStore)
+                    }
                 }
             } else {
                 InsightView()
@@ -100,7 +108,13 @@ struct MemberListView: View {
             ForEach(rankedEntries) { entry in
                 RankingRow(entry: entry, maxSpeed: maxSpeed,
                            title: pointStore.title(rank: entry.rank,
-                                                   outOf: rankedEntries.count))
+                                                   outOf: rankedEntries.count,
+                                                   isPro: entry.isMe ? purchaseStore.isPro : friendStore.isPro(entry.friend)))
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        guard !entry.isMe else { return }
+                        selectedEntry = entry
+                    }
             }
         }
     }
@@ -170,8 +184,7 @@ private struct RankingRow: View {
                 .frame(width: 36, alignment: .center)
 
             HStack(spacing: 6) {
-                Text(entry.friend.emoji)
-                    .font(.body)
+                UserAvatarView(emoji: entry.friend.emoji, photoURL: entry.friend.photoURL, size: 32)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
                         Text(entry.friend.name)
@@ -238,8 +251,7 @@ private struct RankingRow: View {
 
     private var speedLabel: String {
         guard let s = entry.avgSpeed else { return "–" }
-        return s < 60 ? String(format: "%.0f秒", s)
-                      : String(format: "%.0f秒", s)
+        return formatAverageSpeed(s)
     }
 
     private var barColor: Color {
@@ -257,6 +269,44 @@ private struct RankingRow: View {
         case "purple": return .purple
         default:       return .secondary
         }
+    }
+}
+
+// MARK: - 友達プロフィールシート
+
+private struct FriendProfileSheet: View {
+    let entry: RankedEntry
+    let outOf: Int
+
+    @EnvironmentObject private var pointStore:    PointStore
+    @EnvironmentObject private var friendStore:   FriendStore
+    @EnvironmentObject private var purchaseStore: PurchaseStore
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Capsule()
+                .frame(width: 36, height: 5)
+                .foregroundStyle(Color(UIColor.systemGray4))
+                .padding(.top, 12)
+
+            ProfileIDCard(
+                name:         entry.friend.name,
+                emoji:        entry.friend.emoji,
+                profileImage: nil,
+                username:     "",
+                rank:         entry.rank,
+                outOf:        outOf,
+                avgSpeed:     entry.avgSpeed,
+                answerCount:  pointStore.history(for: entry.friend.id).count,
+                isPro:        entry.isMe ? purchaseStore.isPro : friendStore.isPro(entry.friend)
+            )
+            .padding(.horizontal)
+
+            Spacer()
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.hidden)
     }
 }
 

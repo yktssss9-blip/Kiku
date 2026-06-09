@@ -39,7 +39,7 @@ struct GroupCreateView: View {
                                 }
                             } label: {
                                 HStack {
-                                    Text(friend.emoji).font(.title3)
+                                    UserAvatarView(emoji: friend.emoji, photoURL: friend.photoURL, size: 30)
                                     Text(friend.name).foregroundStyle(.primary)
                                     Spacer()
                                     if selectedIds.contains(friend.id) {
@@ -72,7 +72,8 @@ struct GroupCreateView: View {
                         }
                         groupStore.create(
                             name: groupName.trimmingCharacters(in: .whitespaces),
-                            memberIds: Array(selectedIds)
+                            memberIds: Array(selectedIds),
+                            friends: friendStore.friends
                         )
                         dismiss()
                     }

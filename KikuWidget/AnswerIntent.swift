@@ -3,7 +3,6 @@ import ActivityKit
 
 /// ウィジェット Extension 側の stub
 /// コンパイルのために定義が必要。実際の perform() は main app 側で実行される。
-/// LiveActivityIntent 準拠により iOS がメインアプリ側へルーティングする。
 struct AnswerIntent: AppIntent, LiveActivityIntent {
     static var title: LocalizedStringResource = "回答する"
     static var openAppWhenRun: Bool = true
@@ -20,8 +19,23 @@ struct AnswerIntent: AppIntent, LiveActivityIntent {
         self.value      = value
     }
 
-    func perform() async throws -> some IntentResult {
-        // stub: メインアプリ側の perform() が呼ばれるため、ここには到達しない想定
-        return .result()
+    func perform() async throws -> some IntentResult { .result() }
+}
+
+/// 友達申請 承認/辞退 stub
+struct FriendRequestResponseIntent: AppIntent, LiveActivityIntent {
+    static var title: LocalizedStringResource = "友達申請に返答"
+    static var openAppWhenRun: Bool = true
+
+    @Parameter(title: "Request ID") var requestId: String
+    @Parameter(title: "Accept")     var accept: Bool
+
+    init() {}
+
+    init(requestId: String, accept: Bool) {
+        self.requestId = requestId
+        self.accept    = accept
     }
+
+    func perform() async throws -> some IntentResult { .result() }
 }

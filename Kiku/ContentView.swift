@@ -5,6 +5,7 @@ import StoreKit
 import MessageUI
 
 struct ContentView: View {
+    @Binding var selectedTab: Int
     @AppStorage("kiku.isDark") private var isDark: Bool = true
 
     @EnvironmentObject private var questionStore: QuestionStore
@@ -28,11 +29,12 @@ struct ContentView: View {
     }
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             SendTabView()
                 .tabItem {
                     Label("送る", systemImage: "paperplane.fill")
                 }
+                .tag(0)
                 .environmentObject(questionStore)
                 .environmentObject(friendStore)
                 .environmentObject(groupStore)
@@ -44,22 +46,26 @@ struct ContentView: View {
                 .tabItem {
                     Label("フィード", systemImage: "list.bullet")
                 }
+                .tag(1)
 
             ChatListView()
                 .tabItem {
                     Label("チャット", systemImage: "bubble.left.and.bubble.right.fill")
                 }
                 .badge(chatStore.totalUnread)
+                .tag(2)
 
             MemberListView()
                 .tabItem {
                     Label("ランキング", systemImage: "crown.fill")
                 }
+                .tag(3)
 
             SettingsView()
                 .tabItem {
                     Label("設定", systemImage: "gearshape")
                 }
+                .tag(4)
         }
         .preferredColorScheme(isDark ? .dark : .light)
     }
@@ -72,6 +78,7 @@ struct SettingsView: View {
     @EnvironmentObject private var pointStore: PointStore
     @EnvironmentObject private var friendStore: FriendStore
     @EnvironmentObject private var purchaseStore: PurchaseStore
+    @EnvironmentObject private var authStore: AuthStore
     @AppStorage("kiku.isDark") private var isDark: Bool = true
     @State private var isEditingProfile = false
     @State private var showPaywall = false
@@ -83,8 +90,13 @@ struct SettingsView: View {
     @State private var showDeleteFriendAlert = false
     @State private var friendToBlock: Friend? = nil
     @State private var showBlockFriendAlert = false
+    @State private var selectedFriendForProfile: Friend? = nil
     @State private var showMailCompose = false
     @State private var showMailUnavailableAlert = false
+    @State private var showDeleteAccountConfirm = false
+    @State private var isDeletingAccount = false
+    @State private var deleteAccountError: String? = nil
+    @State private var showDeleteAccountErrorAlert = false
     @Environment(\.requestReview) private var requestReview
 
     private var appVersion: String {
@@ -108,7 +120,8 @@ struct SettingsView: View {
                             rank:         myRankInfo.rank,
                             outOf:        myRankInfo.outOf,
                             avgSpeed:     pointStore.averageSpeed(for: profileStore.myId),
-                            answerCount:  pointStore.history(for: profileStore.myId).count
+                            answerCount:  pointStore.history(for: profileStore.myId).count,
+                            isPro:        purchaseStore.isPro
                         )
                         Button {
                             isEditingProfile = true
@@ -126,6 +139,22 @@ struct SettingsView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                         }
                         .buttonStyle(.plain)
+
+                        StopTimeSlider(
+                            isActive: profileStore.isStopTimeActive,
+                            onToggle: {
+                                if profileStore.isStopTimeActive {
+                                    profileStore.isStopTimeActive = false
+                                } else {
+                                    if !purchaseStore.isPro && profileStore.hasUsedFreeStopTimeToday() {
+                                        showPaywall = true
+                                        return
+                                    }
+                                    if !purchaseStore.isPro { profileStore.recordStopTimeActivation() }
+                                    profileStore.isStopTimeActive = true
+                                }
+                            }
+                        )
                     }
                     .padding(.vertical, 4)
                 }
@@ -272,6 +301,10 @@ struct SettingsView: View {
                                     Spacer()
                                 }
                                 .padding(.vertical, 2)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    selectedFriendForProfile = friend
+                                }
                                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                     Button(role: .destructive) {
                                         friendToDelete = friend
@@ -311,26 +344,6 @@ struct SettingsView: View {
                             }
                         }
                     }
-                }
-
-                // Stop Time
-                Section {
-                    Toggle(isOn: Binding(
-                        get: { profileStore.isStopTimeActive },
-                        set: { profileStore.isStopTimeActive = $0 }
-                    )) {
-                        Label("Stop Time", systemImage: "pause.circle.fill")
-                    }
-                    .tint(.orange)
-                    if profileStore.isStopTimeActive {
-                        Text("Stop Time 中は、質問の送信先に選ばれたときに相手に通知されます。")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                } header: {
-                    Text("Stop Time")
-                } footer: {
-                    Text("返信できないときにオンにすると、相手が質問を送ろうとした際に Stop Time 中であることが表示されます。")
                 }
 
                 // 外観
@@ -389,6 +402,37 @@ struct SettingsView: View {
                     LabeledContent("バージョン", value: appVersion)
                     LabeledContent("ビルド", value: buildNumber)
                 }
+
+                // アカウント削除
+                Section {
+                    Button(role: .destructive) {
+                        showDeleteAccountConfirm = true
+                    } label: {
+                        if isDeletingAccount {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                Text("削除中…")
+                            }
+                        } else {
+                            Label("アカウントを削除", systemImage: "trash")
+                        }
+                    }
+                    .disabled(isDeletingAccount)
+                    .confirmationDialog(
+                        "アカウントを削除しますか？",
+                        isPresented: $showDeleteAccountConfirm,
+                        titleVisibility: .visible
+                    ) {
+                        Button("削除する", role: .destructive) {
+                            deleteAccount()
+                        }
+                        Button("キャンセル", role: .cancel) {}
+                    } message: {
+                        Text("プロフィール・質問・チャット・ポイントなど、すべてのデータが完全に削除されます。この操作は元に戻せません。")
+                    }
+                } footer: {
+                    Text("アカウントを削除すると、すべてのデータが完全に削除され、元に戻すことはできません。")
+                }
             }
             .navigationTitle("設定")
             .sheet(isPresented: $isEditingProfile) {
@@ -400,9 +444,14 @@ struct SettingsView: View {
                     .environmentObject(purchaseStore)
             }
             .sheet(isPresented: $isAddingFriend) {
-                MemberAddView { newFriend in
-                    friendStore.add(newFriend)
-                }
+                MemberAddView()
+            }
+            .sheet(item: $selectedFriendForProfile) { friend in
+                SettingsFriendProfileSheet(friend: friend)
+                    .environmentObject(pointStore)
+                    .environmentObject(friendStore)
+                    .environmentObject(profileStore)
+                    .environmentObject(purchaseStore)
             }
             .alert("友達を削除しますか？", isPresented: $showDeleteFriendAlert, presenting: friendToDelete) { friend in
                 Button("削除", role: .destructive) {
@@ -450,6 +499,11 @@ struct SettingsView: View {
             } message: {
                 Text("このデバイスにメールアカウントが設定されていません。「設定」アプリからメールアカウントを追加してください。")
             }
+            .alert("削除に失敗しました", isPresented: $showDeleteAccountErrorAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(deleteAccountError ?? "")
+            }
             .onAppear { loadNotificationStatus() }
             .onReceive(
                 NotificationCenter.default.publisher(
@@ -495,6 +549,22 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Delete Account
+
+    private func deleteAccount() {
+        isDeletingAccount = true
+        Task {
+            let error = await authStore.deleteAccount()
+            await MainActor.run {
+                isDeletingAccount = false
+                if let error {
+                    deleteAccountError = error
+                    showDeleteAccountErrorAlert = true
+                }
+            }
+        }
+    }
+
     // MARK: - Status Badge
 
     private func statusBadge(text: String, color: Color) -> some View {
@@ -522,7 +592,7 @@ struct SettingsView: View {
 
 // MARK: - ProfileIDCard
 
-private struct ProfileIDCard: View {
+struct ProfileIDCard: View {
     let name:         String
     let emoji:        String
     let profileImage: Image?
@@ -531,8 +601,9 @@ private struct ProfileIDCard: View {
     let outOf:        Int
     let avgSpeed:     Double?
     let answerCount:  Int
+    let isPro:        Bool
 
-    private var title: PointTitle { PointTitle(rank: rank, outOf: outOf) }
+    private var title: PointTitle { PointTitle(rank: rank, outOf: outOf, isPro: isPro) }
 
     var body: some View {
         ZStack {
@@ -596,7 +667,7 @@ private struct ProfileIDCard: View {
                 HStack(spacing: 0) {
                     statCell(label: "順位",   value: "\(rank)位")
                     Rectangle().fill(.white.opacity(0.2)).frame(width: 1, height: 28)
-                    statCell(label: "平均速度", value: avgSpeed.map { String(format: "%.0f秒", $0) } ?? "–")
+                    statCell(label: "平均速度", value: avgSpeed.map(formatAverageSpeed) ?? "–")
                     Rectangle().fill(.white.opacity(0.2)).frame(width: 1, height: 28)
                     statCell(label: "回答数",  value: "\(answerCount)件")
                 }
@@ -665,27 +736,93 @@ private struct ProfileIDCard: View {
 struct MailComposeView: UIViewControllerRepresentable {
     let recipient: String
     let subject: String
+    var body: String = ""
+    var onFinish: () -> Void = {}
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    static var canSendMail: Bool { MFMailComposeViewController.canSendMail() }
+
+    func makeCoordinator() -> Coordinator { Coordinator(onFinish: onFinish) }
 
     func makeUIViewController(context: Context) -> MFMailComposeViewController {
         let vc = MFMailComposeViewController()
         vc.mailComposeDelegate = context.coordinator
         vc.setToRecipients([recipient])
         vc.setSubject(subject)
+        if !body.isEmpty { vc.setMessageBody(body, isHTML: false) }
         return vc
     }
 
     func updateUIViewController(_ uiViewController: MFMailComposeViewController, context: Context) {}
 
-    class Coordinator: NSObject, MFMailComposeViewControllerDelegate {
+    final class Coordinator: NSObject, MFMailComposeViewControllerDelegate {
+        let onFinish: () -> Void
+        init(onFinish: @escaping () -> Void) { self.onFinish = onFinish }
+
         func mailComposeController(
             _ controller: MFMailComposeViewController,
             didFinishWith result: MFMailComposeResult,
-            error: Error?
+            error: (any Error)?
         ) {
             controller.dismiss(animated: true)
+            onFinish()
         }
+    }
+}
+
+// MARK: - 設定画面からの友達プロフィールシート
+
+private struct SettingsFriendProfileSheet: View {
+    let friend: Friend
+
+    @EnvironmentObject private var pointStore:    PointStore
+    @EnvironmentObject private var friendStore:   FriendStore
+    @EnvironmentObject private var profileStore:  ProfileStore
+    @EnvironmentObject private var purchaseStore: PurchaseStore
+
+    private var rankedAll: [(friend: Friend, rank: Int, avgSpeed: Double?)] {
+        let me = Friend(id: profileStore.myId, name: profileStore.name, emoji: profileStore.emoji, photoURL: profileStore.photoURL)
+        let all = [me] + friendStore.friends
+        let sorted = all.sorted {
+            let a = pointStore.averageSpeed(for: $0.id)
+            let b = pointStore.averageSpeed(for: $1.id)
+            switch (a, b) {
+            case (.some(let av), .some(let bv)): return av < bv
+            case (.some, .none):               return true
+            default:                           return false
+            }
+        }
+        return sorted.enumerated().map { i, f in
+            (friend: f, rank: i + 1, avgSpeed: pointStore.averageSpeed(for: f.id))
+        }
+    }
+
+    var body: some View {
+        let all = rankedAll
+        let entry = all.first { $0.friend.id == friend.id }
+
+        VStack(spacing: 16) {
+            Capsule()
+                .frame(width: 36, height: 5)
+                .foregroundStyle(Color(UIColor.systemGray4))
+                .padding(.top, 12)
+
+            ProfileIDCard(
+                name:         friend.name,
+                emoji:        friend.emoji,
+                profileImage: nil,
+                username:     "",
+                rank:         entry?.rank ?? 0,
+                outOf:        all.count,
+                avgSpeed:     entry?.avgSpeed,
+                answerCount:  pointStore.history(for: friend.id).count,
+                isPro:        friendStore.isPro(friend)
+            )
+            .padding(.horizontal)
+
+            Spacer()
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.hidden)
     }
 }
 

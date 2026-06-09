@@ -1,6 +1,7 @@
 import SwiftUI
 import FirebaseFirestore
 import FirebaseAuth
+import FirebaseStorage
 
 // MARK: - Icon Mode
 
@@ -37,6 +38,13 @@ class ProfileStore: ObservableObject {
         didSet {
             UserDefaults.standard.set(iconMode.rawValue, forKey: "kiku.profile.iconMode")
             Self.appGroup?.set(iconMode.rawValue, forKey: "kiku.profile.iconMode")
+            saveProfileToFirestore()
+        }
+    }
+    @Published var photoURL: String? {
+        didSet {
+            UserDefaults.standard.set(photoURL, forKey: "kiku.profile.photoURL")
+            saveProfileToFirestore()
         }
     }
     @Published var username: String {
@@ -95,6 +103,7 @@ class ProfileStore: ObservableObject {
         let savedMode = UserDefaults.standard.string(forKey: "kiku.profile.iconMode") ?? ""
         let hasPhoto  = UserDefaults.standard.data(forKey: "kiku.profile.photo") != nil
         self.iconMode = IconMode(rawValue: savedMode) ?? (hasPhoto ? .photo : .emoji)
+        self.photoURL = UserDefaults.standard.string(forKey: "kiku.profile.photoURL")
         self.isStopTimeActive  = UserDefaults.standard.bool(forKey: "kiku.profile.stopTimeActive")
         self.activeHourStart   = UserDefaults.standard.object(forKey: "kiku.profile.activeHourStart") as? Int ?? 9
         self.activeHourEnd     = UserDefaults.standard.object(forKey: "kiku.profile.activeHourEnd")   as? Int ?? 12
@@ -132,6 +141,16 @@ class ProfileStore: ObservableObject {
                     Self.appGroup?.set(emoji, forKey: "kiku.profile.emoji")
                     self.emoji = emoji
                 }
+                if let iconModeStr = data["iconMode"] as? String,
+                   let mode = IconMode(rawValue: iconModeStr) {
+                    UserDefaults.standard.set(iconModeStr, forKey: "kiku.profile.iconMode")
+                    Self.appGroup?.set(iconModeStr, forKey: "kiku.profile.iconMode")
+                    self.iconMode = mode
+                }
+                if let url = data["photoURL"] as? String {
+                    UserDefaults.standard.set(url, forKey: "kiku.profile.photoURL")
+                    self.photoURL = url
+                }
                 if let username = data["username"] as? String {
                     UserDefaults.standard.set(username, forKey: "kiku.profile.username")
                     self.username = username
@@ -150,6 +169,24 @@ class ProfileStore: ObservableObject {
                 }
             }
         }
+    }
+
+    /// 空いているユーザー名を自動生成する（"user" + ランダム英数字6桁）
+    /// - 候補が埋まっていた場合は最大10回再試行し、それでも空かなければランダム性を強めて返す
+    /// - 最終的な一意性は `setUsername` のトランザクションで保証されるため、ここでは存在チェックのみ
+    func generateUniqueUsername() async -> String {
+        let charset = Array("abcdefghijklmnopqrstuvwxyz0123456789")
+
+        for _ in 0..<10 {
+            let suffix = String((0..<6).map { _ in charset.randomElement()! })
+            let candidate = "user\(suffix)"
+            if let doc = try? await db.collection("usernames").document(candidate).getDocument(),
+               !doc.exists {
+                return candidate
+            }
+        }
+        // 万が一すべて埋まっていた場合は UUID 由来でほぼ確実に空いている候補を返す
+        return "user" + String(UUID().uuidString.lowercased().filter(\.isHexDigit).prefix(10))
     }
 
     /// ユーザー名を Firestore に登録する（一意性をトランザクションで保証）
@@ -204,15 +241,34 @@ class ProfileStore: ObservableObject {
     private func saveProfileToFirestore() {
         guard let uid = Auth.auth().currentUser?.uid,
               !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        db.collection("users").document(uid).setData([
+        var data: [String: Any] = [
             "name":            name,
             "emoji":           emoji,
+            "iconMode":        iconMode.rawValue,
             "localId":         myId.uuidString,
             "stopTimeActive":  isStopTimeActive,
             "activeHourStart": activeHourStart,
             "activeHourEnd":   activeHourEnd,
             "updatedAt":       FieldValue.serverTimestamp()
-        ], merge: true)
+        ]
+        if let url = photoURL {
+            data["photoURL"] = url
+        } else {
+            data["photoURL"] = FieldValue.delete()
+        }
+        db.collection("users").document(uid).setData(data, merge: true)
+    }
+
+    func uploadProfilePhoto(_ data: Data) async throws -> String {
+        guard let uid = Auth.auth().currentUser?.uid else {
+            throw URLError(.userAuthenticationRequired)
+        }
+        let ref = Storage.storage().reference().child("avatars/\(uid).jpg")
+        let metadata = StorageMetadata()
+        metadata.contentType = "image/jpeg"
+        _ = try await ref.putDataAsync(data, metadata: metadata)
+        let url = try await ref.downloadURL()
+        return url.absoluteString
     }
 
     func completeSetup(name: String, emoji: String) {
@@ -224,6 +280,7 @@ class ProfileStore: ObservableObject {
         name      = ""
         emoji     = "👤"
         photoData = nil
+        photoURL  = nil
         username  = ""
     }
 

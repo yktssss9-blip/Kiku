@@ -83,11 +83,7 @@ struct QuestionComposerView: View {
                     ForEach(selectedFriends) { friend in
                         ZStack(alignment: .topTrailing) {
                             ZStack(alignment: .bottomTrailing) {
-                                Text(friend.emoji)
-                                    .font(.system(size: 22))
-                                    .frame(width: 40, height: 40)
-                                    .background(friendStore.isStopTime(friend) ? Color.orange.opacity(0.15) : Color.blue.opacity(0.12))
-                                    .clipShape(Circle())
+                                UserAvatarView(emoji: friend.emoji, photoURL: friend.photoURL, size: 40)
                                 if friendStore.isStopTime(friend) {
                                     Image(systemName: "pause.circle.fill")
                                         .font(.system(size: 14))
@@ -153,9 +149,11 @@ struct QuestionComposerView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
 
-                        // ＋ ボタン（一番左・全種類追加済みなら非表示）
-                        let availableChoices = AnswerChoice.allCases.filter { $0 != .freeText }
-                        if choices.count < availableChoices.count {
+                        // ＋ ボタン（最大2つ・絵文字/星は単独なので追加不可）
+                        let canAddMore = choices.count < 2
+                            && !choices.contains(.star)
+                            && !choices.contains(.emoji)
+                        if canAddMore {
                             Button {
                                 isShowingChoiceMenu = true
                             } label: {
@@ -261,6 +259,8 @@ struct QuestionComposerView: View {
                     Button(choice.menuLabel + (isProChoice && !purchaseStore.isPro ? " 👑" : "")) {
                         if isProChoice && !purchaseStore.isPro {
                             showPaywall = true
+                        } else if choice == .star || choice == .emoji {
+                            choices = [choice]
                         } else {
                             choices.append(choice)
                         }
@@ -342,33 +342,35 @@ struct QuestionComposerView: View {
     @ViewBuilder
     private func choiceChip(_ choice: AnswerChoice) -> some View {
         ZStack(alignment: .topTrailing) {
-            HStack(spacing: 5) {
+            HStack(spacing: 6) {
                 Image(systemName: choice.icon)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(choice.tintColor)
                 if let label = choice.shortLabel {
                     Text(label)
-                        .font(.caption)
+                        .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundStyle(.primary)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
             .background(choice.tintColor.opacity(0.12))
             .clipShape(Capsule())
 
-            Button {
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    choices.removeAll { $0.id == choice.id }
+            if choices.count > 1 {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        choices.removeAll { $0.id == choice.id }
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.white)
+                        .background(Color.gray.opacity(0.8), in: Circle())
                 }
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.white)
-                    .background(Color.gray.opacity(0.8), in: Circle())
+                .offset(x: 6, y: -6)
             }
-            .offset(x: 6, y: -6)
         }
         .padding(.top, 6)
         .padding(.trailing, 6)
@@ -515,7 +517,7 @@ private struct FriendPickerRow: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 12) {
-                Text(friend.emoji).font(.title2)
+                UserAvatarView(emoji: friend.emoji, photoURL: friend.photoURL, size: 36)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(friend.name).font(.body).foregroundStyle(.primary)
                     if isStopTime {

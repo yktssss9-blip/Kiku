@@ -63,7 +63,7 @@ struct QuestionCreateView: View {
                                            memo: memoValue.isEmpty ? nil : memoValue,
                                            includeSelf: notifySelf)
 
-                        // 各メンバーの Live Activity を自動起動
+                        // Live Activity を自動起動（自分宛て、またはローカルのみのメンバーの代理回答用。Firebase連携済みメンバーは本人の端末で起動されるべき）
                         Task { @MainActor in
                             if let question = questionStore.questions.last {
                                 var memberIds = group.memberIds
@@ -73,9 +73,15 @@ struct QuestionCreateView: View {
                                 }
                                 for memberId in memberIds {
                                     let isSelf = memberId == questionStore.senderMemberId
-                                    let name = isSelf
-                                        ? profileStore.name
-                                        : (friendStore.friends.first { $0.id == memberId }?.name ?? "メンバー")
+                                    let name: String
+                                    if isSelf {
+                                        name = profileStore.name
+                                    } else if let friend = friendStore.friends.first(where: { $0.id == memberId }),
+                                              friend.firebaseUID.isEmpty {
+                                        name = friend.name
+                                    } else {
+                                        continue
+                                    }
                                     ActivityManager.shared.start(
                                         question:   question,
                                         memberId:   memberId,

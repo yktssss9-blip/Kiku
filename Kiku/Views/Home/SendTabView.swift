@@ -7,6 +7,7 @@ struct SendTabView: View {
     @EnvironmentObject private var profileStore:  ProfileStore
     @EnvironmentObject private var purchaseStore: PurchaseStore
     @EnvironmentObject private var templateStore: TemplateStore
+    @EnvironmentObject private var reviewManager: ReviewManager
 
     @State private var selectedFriends: [Friend]   = []
     @State private var selectedGroup:   KikuGroup? = nil
@@ -56,6 +57,8 @@ struct SendTabView: View {
                 questionInput
                     .padding(.horizontal, 24)
 
+                Spacer()
+
                 // ─── 選択肢チップ行 ───
                 choiceRow
                     .padding(.horizontal, 24)
@@ -74,9 +77,7 @@ struct SendTabView: View {
             Text("\(stopTimeNames) は現在 Stop Time 中のため、質問を送ることができません。")
         }
         .sheet(isPresented: $showAddFriend) {
-            MemberAddView { newFriend in
-                friendStore.add(newFriend)
-            }
+            MemberAddView()
             .environmentObject(friendStore)
             .environmentObject(profileStore)
         }
@@ -130,6 +131,7 @@ struct SendTabView: View {
                 }
             }
         } label: {
+            let isStopTime = friendStore.isStopTime(friend)
             VStack(spacing: 6) {
                 ZStack {
                     Circle()
@@ -142,10 +144,9 @@ struct SendTabView: View {
                             .frame(width: 72, height: 72)
                     }
 
-                    Text(friend.emoji)
-                        .font(.system(size: 32))
+                    UserAvatarView(emoji: friend.emoji, photoURL: friend.photoURL, size: 72)
 
-                    if friendStore.isStopTime(friend) {
+                    if isStopTime {
                         Image(systemName: "pause.circle.fill")
                             .font(.system(size: 16))
                             .foregroundStyle(.orange)
@@ -153,6 +154,8 @@ struct SendTabView: View {
                             .offset(x: 24, y: 24)
                     }
                 }
+                .grayscale(isStopTime ? 1.0 : 0)
+                .opacity(isStopTime ? 0.5 : 1.0)
                 .scaleEffect(isSelected ? 1.08 : 1.0)
 
                 Text(friend.name)
@@ -250,71 +253,60 @@ struct SendTabView: View {
 
     // MARK: - 選択済み表示エリア
 
-    @ViewBuilder
     private var selectedRecipientsArea: some View {
-        if selectedFriends.isEmpty && selectedGroup == nil {
-            Spacer(minLength: 20)
-        } else {
-            VStack(spacing: 8) {
-                // 友達が選択されている場合
-                if !selectedFriends.isEmpty {
-                    HStack(spacing: selectedFriends.count > 3 ? 8 : 16) {
-                        ForEach(selectedFriends) { friend in
-                            VStack(spacing: 6) {
-                                ZStack {
-                                    Circle()
-                                        .fill(Color(UIColor.tertiarySystemFill))
-                                        .frame(width: 64, height: 64)
-                                    Circle()
-                                        .stroke(Color.primary, lineWidth: 1.5)
-                                        .frame(width: 64, height: 64)
-                                    Text(friend.emoji)
-                                        .font(.system(size: 28))
-                                }
-                                Text(friend.name)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                            .transition(.asymmetric(
-                                insertion: .move(edge: .top).combined(with: .scale(scale: 0.4)).combined(with: .opacity),
-                                removal:   .move(edge: .top).combined(with: .opacity)
-                            ))
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                }
+        ZStack {
+            Color.clear.frame(height: 96)
 
-                // グループが選択されている場合
-                if let group = selectedGroup {
-                    VStack(spacing: 6) {
-                        ZStack {
-                            Circle()
-                                .fill(Color(UIColor.tertiarySystemFill))
-                                .frame(width: 64, height: 64)
-                            Circle()
-                                .stroke(Color.primary, lineWidth: 1.5)
-                                .frame(width: 64, height: 64)
-                            Text("👥")
-                                .font(.system(size: 28))
+            if !selectedFriends.isEmpty {
+                HStack(spacing: selectedFriends.count > 3 ? 8 : 16) {
+                    ForEach(selectedFriends) { friend in
+                        VStack(spacing: 6) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color(UIColor.tertiarySystemFill))
+                                    .frame(width: 64, height: 64)
+                                Circle()
+                                    .stroke(Color.primary, lineWidth: 1.5)
+                                    .frame(width: 64, height: 64)
+                                UserAvatarView(emoji: friend.emoji, photoURL: friend.photoURL, size: 64)
+                            }
+                            Text(friend.name)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
                         }
-                        Text(group.name)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Text("\(group.memberIds.count)人")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .top).combined(with: .scale(scale: 0.4)).combined(with: .opacity),
+                            removal:   .move(edge: .top).combined(with: .opacity)
+                        ))
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .top).combined(with: .scale(scale: 0.4)).combined(with: .opacity),
-                        removal:   .move(edge: .top).combined(with: .opacity)
-                    ))
                 }
+            } else if let group = selectedGroup {
+                VStack(spacing: 6) {
+                    ZStack {
+                        Circle()
+                            .fill(Color(UIColor.tertiarySystemFill))
+                            .frame(width: 64, height: 64)
+                        Circle()
+                            .stroke(Color.primary, lineWidth: 1.5)
+                            .frame(width: 64, height: 64)
+                        Text("👥")
+                            .font(.system(size: 28))
+                    }
+                    Text(group.name)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text("\(group.memberIds.count)人")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .transition(.asymmetric(
+                    insertion: .move(edge: .top).combined(with: .scale(scale: 0.4)).combined(with: .opacity),
+                    removal:   .move(edge: .top).combined(with: .opacity)
+                ))
             }
         }
+        .clipped()
     }
 
     // MARK: - 選択肢チップ行
@@ -384,19 +376,19 @@ struct SendTabView: View {
     @ViewBuilder
     private func choiceChip(_ choice: AnswerChoice) -> some View {
         ZStack(alignment: .topTrailing) {
-            HStack(spacing: 5) {
+            HStack(spacing: 8) {
                 Image(systemName: choice.icon)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(choice.tintColor)
                 if let label = choice.shortLabel {
                     Text(label)
-                        .font(.caption)
+                        .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundStyle(.primary)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
             .background(choice.tintColor.opacity(0.18))
             .clipShape(Capsule())
 
@@ -406,14 +398,14 @@ struct SendTabView: View {
                 }
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 14))
+                    .font(.system(size: 22))
                     .foregroundStyle(.secondary)
                     .background(Color(UIColor.systemBackground).opacity(0.6), in: Circle())
             }
-            .offset(x: 6, y: -6)
+            .offset(x: 8, y: -8)
         }
-        .padding(.top, 6)
-        .padding(.trailing, 6)
+        .padding(.top, 8)
+        .padding(.trailing, 8)
     }
 
     // MARK: - 送信エリア（テンプレート＋送信）
@@ -483,7 +475,8 @@ struct SendTabView: View {
 
         if !selectedFriends.isEmpty {
             questionStore.sendToIndividuals(text: trimmed, to: selectedFriends, choices: choices, reminderAfter: reminderSeconds)
-            let targets = selectedFriends
+            // Live Activity はローカルのみの友達（firebaseUID なし）の代理回答用。Firebase連携済みの友達は本人の端末で起動されるべき
+            let targets = selectedFriends.filter { $0.firebaseUID.isEmpty }
             Task { @MainActor in
                 if let question = questionStore.questions.last {
                     for friend in targets {
@@ -501,12 +494,14 @@ struct SendTabView: View {
             let target = group
             Task { @MainActor in
                 if let question = questionStore.questions.last {
+                    // Live Activity はローカルのみのメンバー（firebaseUID なし）の代理回答用。Firebase連携済みメンバーは本人の端末で起動されるべき
                     for memberId in target.memberIds {
-                        let name = friendStore.friends.first { $0.id == memberId }?.name ?? "メンバー"
+                        guard let friend = friendStore.friends.first(where: { $0.id == memberId }),
+                              friend.firebaseUID.isEmpty else { continue }
                         ActivityManager.shared.start(
                             question:   question,
                             memberId:   memberId,
-                            memberName: name
+                            memberName: friend.name
                         )
                         try? await Task.sleep(nanoseconds: 300_000_000)
                     }
@@ -519,6 +514,7 @@ struct SendTabView: View {
         selectedGroup   = nil
         choices         = [.yes, .no]
         reminderSeconds = nil
+        reviewManager.onQuestionSent()
     }
 
     // MARK: - テンプレート適用

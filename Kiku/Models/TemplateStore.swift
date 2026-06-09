@@ -134,7 +134,7 @@ class TemplateStore: ObservableObject {
 
     // MARK: - CRUD
 
-    func add(text: String, friendIds: [UUID], groupId: UUID?, choices: [AnswerChoice]) {
+    func add(text: String, friendIds: [UUID], groupId: UUID?, choices: [AnswerChoice], friends: [Friend] = []) {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         let template = QuestionTemplate(
             text:      text,
@@ -143,15 +143,15 @@ class TemplateStore: ObservableObject {
             choices:   choices.map(\.rawValue)
         )
         templates.insert(template, at: 0)
-        saveToFirestore(template, uid: uid)
+        saveToFirestore(template, uid: uid, friends: friends)
         saveToUserDefaults()
     }
 
-    func updateSchedule(id: UUID, schedule: ScheduleConfig) {
+    func updateSchedule(id: UUID, schedule: ScheduleConfig, friends: [Friend] = []) {
         guard let uid = Auth.auth().currentUser?.uid,
               let idx = templates.firstIndex(where: { $0.id == id }) else { return }
         templates[idx].schedule = schedule
-        saveToFirestore(templates[idx], uid: uid)
+        saveToFirestore(templates[idx], uid: uid, friends: friends)
         saveToUserDefaults()
     }
 
@@ -165,7 +165,7 @@ class TemplateStore: ObservableObject {
 
     // MARK: - Firestore 書き込み
 
-    private func saveToFirestore(_ template: QuestionTemplate, uid: String) {
+    private func saveToFirestore(_ template: QuestionTemplate, uid: String, friends: [Friend] = []) {
         var data: [String: Any] = [
             "text":      template.text,
             "friendIds": template.friendIds.map(\.uuidString),
@@ -174,6 +174,21 @@ class TemplateStore: ObservableObject {
             "schedule":  template.schedule.toFirestore(),
         ]
         if let gid = template.groupId { data["groupId"] = gid.uuidString }
+
+        // Cloud Functions が自動送信時に質問の宛先を解決できるよう、
+        // QuestionStore.firestoreData と同じ形式で Friend → Firebase UID の対応を保存する
+        let targetFriends = friends.filter { f in template.friendIds.contains(f.id) }
+        let memberNamesDict = targetFriends
+            .reduce(into: [String: Any]()) { $0[$1.id.uuidString] = $1.name }
+        if !memberNamesDict.isEmpty { data["memberNames"] = memberNamesDict }
+
+        let recipientFriends = targetFriends.filter { !$0.firebaseUID.isEmpty }
+        let recipientUIDs = recipientFriends.map(\.firebaseUID)
+        if !recipientUIDs.isEmpty { data["recipientUIDs"] = recipientUIDs }
+
+        let recipientMemberMap = recipientFriends
+            .reduce(into: [String: Any]()) { $0[$1.firebaseUID] = $1.id.uuidString }
+        if !recipientMemberMap.isEmpty { data["recipientMemberMap"] = recipientMemberMap }
 
         db.collection("users").document(uid)
             .collection("templates").document(template.id.uuidString)

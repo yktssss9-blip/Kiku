@@ -1,17 +1,16 @@
 import SwiftUI
 
-// App Store 公開後、下記の ID を実際の App Store ID に差し替えること
-private let appStoreReviewURL = URL(string: "https://apps.apple.com/jp/app/id\(appStoreID)?action=write-review")!
-private let appStoreID = "0000000000"  // ← ここを App Store ID に変更
-
 struct AnswerView: View {
     let question: Question
     let memberId: UUID
     let memberName: String
     let memberEmoji: String
+    var memberPhotoURL: String? = nil
     var isInvite: Bool = false
+    var jumpToTimePicker: Bool = false
 
     @EnvironmentObject private var questionStore: QuestionStore
+    @EnvironmentObject private var purchaseStore: PurchaseStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
 
@@ -26,6 +25,12 @@ struct AnswerView: View {
     @State private var selectedStar: Int = 0
     @State private var starCommentText: String = ""
 
+    // MARK: - 回答変更（Pro限定・1質問につき1回）
+
+    @State private var isEditing: Bool = false
+    @State private var hasUsedEdit: Bool = false
+    @State private var showPaywall: Bool = false
+
     // MARK: - Urgency Timer
 
     @State private var elapsed: TimeInterval = 0
@@ -35,6 +40,15 @@ struct AnswerView: View {
 
     private var answeredCount: Int {
         question.answers.filter { $0.value != "pending" }.count
+    }
+
+    private var myAnswer: Answer? {
+        question.answers.first { $0.memberId == memberId }
+    }
+
+    private var canEditAnswer: Bool {
+        guard let myAnswer, myAnswer.value != "pending" else { return false }
+        return !myAnswer.hasBeenEdited && !hasUsedEdit
     }
 
     private var choices: [AnswerChoice] { question.answerChoices }
@@ -92,7 +106,19 @@ struct AnswerView: View {
             }
         }
         .ignoresSafeArea(edges: .top)
-        .onAppear { elapsed = Date().timeIntervalSince(question.createdAt) }
+        .onAppear {
+            elapsed = Date().timeIntervalSince(question.createdAt)
+            if answered == nil, let myAnswer, myAnswer.value != "pending" {
+                answered = myAnswer.value
+            }
+            if jumpToTimePicker && hasTime {
+                step = .time
+            }
+        }
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
+                .environmentObject(purchaseStore)
+        }
         .onReceive(urgencyTimer) { _ in
             elapsed = Date().timeIntervalSince(question.createdAt)
         }
@@ -107,7 +133,7 @@ struct AnswerView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 HStack(spacing: 6) {
-                    Text(memberEmoji).font(.title3)
+                    UserAvatarView(emoji: memberEmoji, photoURL: memberPhotoURL, size: 28)
                     Text("\(memberName)さんへの質問")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -126,7 +152,7 @@ struct AnswerView: View {
 
     private var questionSection: some View {
         VStack(spacing: 20) {
-            Text(memberEmoji).font(.system(size: 72))
+            UserAvatarView(emoji: memberEmoji, photoURL: memberPhotoURL, size: 88)
             Text(question.text)
                 .font(.system(size: 32, weight: .bold))
                 .multilineTextAlignment(.center)
@@ -143,12 +169,23 @@ struct AnswerView: View {
             if hasYesNo {
                 yesNoRow
             }
+            if !hasYesNo && hasTime {
+                timeOnlyButton
+            }
             if hasStar {
                 starRow
             }
             if hasEmoji {
                 emojiGrid
             }
+        }
+    }
+
+    private var timeOnlyButton: some View {
+        Button {
+            withAnimation(.spring(response: 0.3)) { step = .time }
+        } label: {
+            primaryButtonLabel(icon: "clock.fill", text: "時刻を選ぶ", color: .blue)
         }
     }
 
@@ -196,6 +233,25 @@ struct AnswerView: View {
                 }
                 .buttonStyle(.plain)
             }
+
+            Button { pressedRead() } label: {
+                VStack(spacing: 10) {
+                    Text("👀")
+                        .font(.system(size: 40))
+                    Text("既読")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(.gray)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 140)
+                .background(Color.gray.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 24))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24)
+                        .stroke(Color.gray.opacity(0.25), lineWidth: 2)
+                )
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -377,9 +433,9 @@ struct AnswerView: View {
                 .font(.headline)
                 .foregroundStyle(.secondary)
 
-            if answered?.hasPrefix("star:") == true {
+            if answered?.hasPrefix("star:") == true, let url = AppConstants.appStoreReviewURL {
                 Button {
-                    openURL(appStoreReviewURL)
+                    openURL(url)
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "star.fill")
@@ -398,11 +454,44 @@ struct AnswerView: View {
                     .foregroundStyle(.secondary)
             }
 
+            if canEditAnswer {
+                editAnswerButton
+            }
+
             Button("閉じる") { dismiss() }
                 .font(.body)
                 .foregroundStyle(.blue)
                 .padding(.top, 4)
         }
+    }
+
+    private var editAnswerButton: some View {
+        Button {
+            if purchaseStore.isPro {
+                withAnimation(.spring(response: 0.3)) {
+                    isEditing       = true
+                    answered        = nil
+                    step            = .initial
+                    selectedYesNo   = ""
+                    selectedStar    = 0
+                    starCommentText = ""
+                }
+            } else {
+                showPaywall = true
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "pencil")
+                Text("回答を変更する")
+                if !purchaseStore.isPro {
+                    Text("👑").font(.caption)
+                }
+            }
+            .font(.subheadline)
+            .fontWeight(.semibold)
+            .foregroundStyle(.blue)
+        }
+        .padding(.top, 4)
     }
 
     @ViewBuilder
@@ -416,6 +505,14 @@ struct AnswerView: View {
             Text("✕")
                 .font(.system(size: 80, weight: .bold))
                 .foregroundStyle(.red)
+        } else if v == "read" {
+            VStack(spacing: 8) {
+                Text("👀")
+                    .font(.system(size: 64))
+                Text("既読")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(.gray)
+            }
         } else if isTimeValue(v) {
             Image(systemName: "clock.fill")
                 .font(.system(size: 64))
@@ -603,8 +700,9 @@ struct AnswerView: View {
 
     private func displayValue(_ value: String) -> String {
         switch value {
-        case "yes": return "○"
-        case "no":  return "✕"
+        case "yes":  return "○"
+        case "no":   return "✕"
+        case "read": return "既読"
         default:
             if value.hasPrefix("yes:")   { return "○ \(value.dropFirst(4))" }
             if value.hasPrefix("no:")    { return "✕ \(value.dropFirst(3))" }
@@ -635,9 +733,25 @@ struct AnswerView: View {
         submitAnswer("no")
     }
 
+    private func pressedRead() {
+        submitAnswer("read")
+    }
+
     private func submitAnswer(_ value: String) {
         withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
             answered = value
+        }
+        if isEditing {
+            questionStore.editAnswer(questionId: question.id, memberId: memberId, newValue: value)
+            isEditing    = false
+            hasUsedEdit  = true
+            Task {
+                if !value.hasPrefix("star:") {
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    await MainActor.run { dismiss() }
+                }
+            }
+            return
         }
         if isInvite {
             questionStore.submitInviteAnswer(questionId: question.id, memberId: memberId, value: value)

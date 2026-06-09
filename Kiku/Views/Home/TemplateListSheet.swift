@@ -24,7 +24,8 @@ struct TemplateListSheet: View {
                                 text: currentText,
                                 friendIds: currentFriendIds,
                                 groupId: currentGroupId,
-                                choices: currentChoices
+                                choices: currentChoices,
+                                friends: friendStore.friends
                             )
                         } label: {
                             Label("現在の内容をテンプレートとして保存", systemImage: "bookmark.fill")
@@ -78,7 +79,7 @@ struct TemplateListSheet: View {
                 set: { editingScheduleFor = $0?.id }
             )) { template in
                 ScheduleEditSheet(template: template) { updated in
-                    templateStore.updateSchedule(id: template.id, schedule: updated)
+                    templateStore.updateSchedule(id: template.id, schedule: updated, friends: friendStore.friends)
                 }
             }
         }
@@ -154,7 +155,7 @@ struct TemplateListSheet: View {
             if !names.isEmpty {
                 HStack(spacing: 4) {
                     ForEach(names.prefix(3)) { friend in
-                        Text(friend.emoji).font(.caption)
+                        UserAvatarView(emoji: friend.emoji, photoURL: friend.photoURL, size: 20)
                     }
                     if names.count > 3 {
                         Text("+\(names.count - 3)")

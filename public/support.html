@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>きく - サポート</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif;
+      background: #0d0d0d;
+      color: #f0f0f0;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 48px 24px;
+    }
+    .container { width: 100%; max-width: 480px; }
+    .app-name { font-size: 13px; color: #888; letter-spacing: 0.12em; margin-bottom: 8px; text-align: center; }
+    h1 { font-size: 24px; font-weight: 700; text-align: center; margin-bottom: 16px; }
+    .intro { font-size: 15px; color: #ccc; line-height: 1.7; text-align: center; margin-bottom: 40px; }
+    h2 { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+    .faq-item {
+      background: #1a1a1a;
+      border-radius: 14px;
+      padding: 16px 20px;
+      margin-bottom: 12px;
+    }
+    .faq-q { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
+    .faq-q::before { content: "Q. "; color: #888; }
+    .faq-a { font-size: 14px; color: #aaa; line-height: 1.7; }
+    .faq-a::before { content: "A. "; color: #888; }
+    .contact {
+      margin-top: 40px;
+      text-align: center;
+    }
+    .contact-label { font-size: 13px; color: #888; margin-bottom: 12px; }
+    .contact-link {
+      display: inline-block;
+      background: #0a84ff;
+      color: white;
+      text-decoration: none;
+      font-size: 15px;
+      font-weight: 600;
+      padding: 14px 28px;
+      border-radius: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="app-name">き く</div>
+    <h1>サポート</h1>
+    <p class="intro">
+      「きく」は、グループのメンバーに Yes / No で答えられる質問を送り、通知やロック画面からすぐに回答できるアプリです。
+    </p>
+
+    <h2>よくある質問</h2>
+
+    <div class="faq-item">
+      <div class="faq-q">回答が反映されない</div>
+      <div class="faq-a">
+        通信状況によって反映までに時間がかかる場合があります。アプリをホーム画面に表示している状態で少し待ってから、質問詳細画面を開き直してご確認ください。改善しない場合は下記の「お問い合わせ」よりご連絡ください。
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q">通知が届かない</div>
+      <div class="faq-a">
+        端末の「設定」アプリ →「通知」→「きく」から通知が許可されているかご確認ください。Live Activity（ロック画面・Dynamic Island）を利用する場合は、「設定」→「Face ID とパスコード」または「画面表示と明るさ」内の Live Activity 設定もあわせてご確認ください。
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q">アカウントを削除したい</div>
+      <div class="faq-a">
+        アプリ内の「設定」→「アカウントを削除」から、プロフィール・質問・チャット・ポイントなどすべてのデータを完全に削除できます。この操作は取り消せませんのでご注意ください。うまくいかない場合は下記の「お問い合わせ」よりご連絡ください。
+      </div>
+    </div>
+
+    <div class="contact">
+      <div class="contact-label">上記で解決しない場合は、お気軽にお問い合わせください</div>
+      <a class="contact-link" href="mailto:sykt.feedback@gmail.com">お問い合わせ</a>
+    </div>
+  </div>
+</body>
+</html>

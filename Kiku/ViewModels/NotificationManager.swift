@@ -7,15 +7,68 @@ import AudioToolbox
 class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     static let shared = NotificationManager()
 
+    static let friendRequestCategoryId = "FRIEND_REQUEST"
+    static let friendRequestAcceptId   = "FRIEND_REQUEST_ACCEPT"
+    static let friendRequestDeclineId  = "FRIEND_REQUEST_DECLINE"
+    static let chatCategoryId          = "CHAT_MESSAGE"
+
     // 長押しボタンで回答したとき
     var onAnswer: ((UUID, UUID, String) -> Void)?
 
     // 通知本文をタップして AnswerView を開くとき
     var onOpenAnswer: ((UUID, UUID) -> Void)?
 
+    // 友達申請の承認・拒否
+    var onFriendRequestAccept:  ((String, String, String, String, String?) -> Void)?
+    var onFriendRequestDecline: ((String) -> Void)?
+
+    // チャット通知タップ → 該当チャットを開く
+    var onOpenChat: ((UUID) -> Void)?
+
+    // 現在表示中のチャットの questionId（このチャットの通知は抑制する）
+    var activeChatQuestionId: UUID?
+
     override init() {
         super.init()
         UNUserNotificationCenter.current().delegate = self
+    }
+
+    func registerFriendRequestCategory() {
+        let accept = UNNotificationAction(
+            identifier: Self.friendRequestAcceptId,
+            title: "○ 承認",
+            options: []
+        )
+        let decline = UNNotificationAction(
+            identifier: Self.friendRequestDeclineId,
+            title: "✕ 断る",
+            options: [.destructive]
+        )
+        let category = UNNotificationCategory(
+            identifier: Self.friendRequestCategoryId,
+            actions: [accept, decline],
+            intentIdentifiers: [],
+            options: []
+        )
+        UNUserNotificationCenter.current().getNotificationCategories { existing in
+            var updated = existing.filter { $0.identifier != Self.friendRequestCategoryId }
+            updated.insert(category)
+            UNUserNotificationCenter.current().setNotificationCategories(updated)
+        }
+    }
+
+    func registerChatCategory() {
+        let category = UNNotificationCategory(
+            identifier: Self.chatCategoryId,
+            actions: [],
+            intentIdentifiers: [],
+            options: []
+        )
+        UNUserNotificationCenter.current().getNotificationCategories { existing in
+            var updated = existing.filter { $0.identifier != Self.chatCategoryId }
+            updated.insert(category)
+            UNUserNotificationCenter.current().setNotificationCategories(updated)
+        }
     }
 
     // MARK: - 送信音
@@ -241,14 +294,44 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         defer { completionHandler() }
 
         let userInfo = response.notification.request.content.userInfo
+        let actionId = response.actionIdentifier
+
+        // チャットメッセージタップ → 該当チャットを開く
+        if let type = userInfo["type"] as? String, type == "chatMessage",
+           let qIdStr = userInfo["questionId"] as? String,
+           let questionId = UUID(uuidString: qIdStr),
+           actionId == UNNotificationDefaultActionIdentifier {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                self.onOpenChat?(questionId)
+            }
+            return
+        }
+
+        // 友達申請アクション
+        if let type = userInfo["type"] as? String, type == "friendRequest",
+           let requestId = userInfo["requestId"] as? String {
+            let fromUID      = userInfo["fromUID"]      as? String ?? ""
+            let fromName     = userInfo["fromName"]     as? String ?? ""
+            let fromEmoji    = userInfo["fromEmoji"]    as? String ?? "👤"
+            let rawPhotoURL  = userInfo["fromPhotoURL"] as? String
+            let fromPhotoURL = rawPhotoURL?.isEmpty == false ? rawPhotoURL : nil
+            switch actionId {
+            case Self.friendRequestAcceptId:
+                onFriendRequestAccept?(requestId, fromUID, fromName, fromEmoji, fromPhotoURL)
+            case Self.friendRequestDeclineId:
+                onFriendRequestDecline?(requestId)
+            default:
+                break
+            }
+            return
+        }
+
         guard
             let qIdStr     = userInfo["questionId"] as? String,
             let mIdStr     = userInfo["memberId"]   as? String,
             let questionId = UUID(uuidString: qIdStr),
             let memberId   = UUID(uuidString: mIdStr)
         else { return }
-
-        let actionId = response.actionIdentifier
 
         switch actionId {
         case AnswerChoice.yes.actionId:
@@ -292,12 +375,20 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    // アプリ起動中も通知をバナーで表示
+    // アプリ起動中も通知をバナーで表示（チャット画面が開いている場合は抑制）
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        let userInfo = notification.request.content.userInfo
+        if let type = userInfo["type"] as? String, type == "chatMessage",
+           let qIdStr = userInfo["questionId"] as? String,
+           let questionId = UUID(uuidString: qIdStr),
+           activeChatQuestionId == questionId {
+            completionHandler([])
+            return
+        }
         completionHandler([.banner, .sound])
     }
 }

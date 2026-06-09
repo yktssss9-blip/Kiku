@@ -19,6 +19,25 @@ struct Answer: Codable {
     var memberId: UUID
     var value: String       // "yes" / "no" / "pending"
     var answeredAt: Date?
+    /// 一度だけ許可される回答変更を使用済みかどうか
+    var hasBeenEdited: Bool = false
+
+    enum CodingKeys: String, CodingKey {
+        case memberId, value, answeredAt, hasBeenEdited
+    }
+    init(memberId: UUID, value: String, answeredAt: Date? = nil, hasBeenEdited: Bool = false) {
+        self.memberId = memberId
+        self.value = value
+        self.answeredAt = answeredAt
+        self.hasBeenEdited = hasBeenEdited
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        memberId      = try c.decode(UUID.self, forKey: .memberId)
+        value         = try c.decode(String.self, forKey: .value)
+        answeredAt    = try c.decodeIfPresent(Date.self, forKey: .answeredAt)
+        hasBeenEdited = try c.decodeIfPresent(Bool.self, forKey: .hasBeenEdited) ?? false
+    }
 }
 
 struct Question: Identifiable, Codable {
@@ -30,9 +49,11 @@ struct Question: Identifiable, Codable {
     var choices: [String] = ["yes", "no"]
     var inviteToken: String = UUID().uuidString
     var memo: String?
+    /// 質問の作成者UID（受信質問のチャット解放先を判定するために必要。自分が送った質問では常に自分のUID）
+    var createdBy: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, text, groupId, answers, createdAt, choices, inviteToken, memo
+        case id, text, groupId, answers, createdAt, choices, inviteToken, memo, createdBy
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -44,13 +65,14 @@ struct Question: Identifiable, Codable {
         choices     = try c.decodeIfPresent([String].self, forKey: .choices) ?? ["yes", "no"]
         inviteToken = try c.decodeIfPresent(String.self,  forKey: .inviteToken) ?? UUID().uuidString
         memo        = try c.decodeIfPresent(String.self,  forKey: .memo)
+        createdBy   = try c.decodeIfPresent(String.self,  forKey: .createdBy)
     }
     init(id: UUID = UUID(), text: String, groupId: UUID? = nil,
          answers: [Answer], createdAt: Date = Date(), choices: [String] = ["yes", "no"],
-         inviteToken: String = UUID().uuidString, memo: String? = nil) {
+         inviteToken: String = UUID().uuidString, memo: String? = nil, createdBy: String? = nil) {
         self.id = id; self.text = text; self.groupId = groupId
         self.answers = answers; self.createdAt = createdAt; self.choices = choices
-        self.inviteToken = inviteToken; self.memo = memo
+        self.inviteToken = inviteToken; self.memo = memo; self.createdBy = createdBy
     }
 
     var answerChoices: [AnswerChoice] {
@@ -80,10 +102,16 @@ class QuestionStore: ObservableObject {
         }
     }
 
+    /// 他ユーザーから届いた質問（Firestoreが正・ローカル永続化なし）
+    @Published var receivedQuestions: [Question] = []
+
     private let key = "kiku.questions"
     private let db  = Firestore.firestore()
     private var listener: ListenerRegistration?
+    private var receivedListener: ListenerRegistration?
     private var isUpdatingFromFirestore = false
+    private var detectedReceivedIds: Set<UUID> = []
+    private var isInitialReceivedLoad = true
 
     init() {
         if let data = UserDefaults.standard.data(forKey: key),
@@ -108,6 +136,64 @@ class QuestionStore: ObservableObject {
     func stopListening() {
         listener?.remove()
         listener = nil
+    }
+
+    /// 他ユーザーから自分宛に届いた質問をリッスン
+    func startListeningReceived(forUID uid: String) {
+        stopListeningReceived()
+        isInitialReceivedLoad = true
+        detectedReceivedIds.removeAll()
+        receivedListener = db.collection("questions")
+            .whereField("recipientUIDs", arrayContains: uid)
+            .addSnapshotListener { [weak self] snapshot, _ in
+                guard let self, let snapshot else { return }
+                self.mergeReceivedFromFirestore(snapshot, forUID: uid)
+            }
+    }
+
+    func stopListeningReceived() {
+        receivedListener?.remove()
+        receivedListener = nil
+    }
+
+    private func mergeReceivedFromFirestore(_ snapshot: QuerySnapshot, forUID uid: String) {
+        var merged = self.receivedQuestions
+        var newlyDetected: [(Question, UUID)] = []
+        let isInitial = isInitialReceivedLoad
+        isInitialReceivedLoad = false
+
+        for change in snapshot.documentChanges {
+            let data = change.document.data()
+            guard let id = UUID(uuidString: change.document.documentID),
+                  let q  = questionFromData(id: id, data: data) else { continue }
+
+            if let idx = merged.firstIndex(where: { $0.id == q.id }) {
+                merged[idx] = q
+            } else {
+                merged.append(q)
+            }
+
+            guard change.type == .added else { continue }
+            if isInitial {
+                detectedReceivedIds.insert(q.id)
+                continue
+            }
+            guard !detectedReceivedIds.contains(q.id),
+                  data["createdBy"] as? String != uid,
+                  let memberMap  = data["recipientMemberMap"] as? [String: String],
+                  let memberIdStr = memberMap[uid],
+                  let memberId = UUID(uuidString: memberIdStr)
+            else { continue }
+            detectedReceivedIds.insert(q.id)
+            newlyDetected.append((q, memberId))
+        }
+
+        DispatchQueue.main.async {
+            self.receivedQuestions = merged
+            for (q, memberId) in newlyDetected {
+                self.onReceivedQuestion?(q, memberId)
+            }
+        }
     }
 
     /// Firestoreから取得した質問をローカルにマージ（pending状態は上書きしない・招待回答は追加）
@@ -162,29 +248,27 @@ class QuestionStore: ObservableObject {
         }
         let answers  = memberIds.map { Answer(memberId: $0, value: "pending") }
         let question = Question(text: text, groupId: group.id, answers: answers,
-                                choices: choices.map(\.rawValue), memo: memo)
+                                choices: choices.map(\.rawValue), memo: memo,
+                                createdBy: Auth.auth().currentUser?.uid)
         questions.append(question)
         saveQuestionToFirestore(question, friends: friends)
         NotificationManager.playOutgoingSound()
 
-        for memberId in memberIds {
-            let isSelf = memberId == senderMemberId
-            let name  = isSelf ? senderName  : (friends.first { $0.id == memberId }?.name  ?? "メンバー")
-            let emoji = isSelf ? senderEmoji : (friends.first { $0.id == memberId }?.emoji ?? "👤")
+        if includeSelf, let selfId = senderMemberId, memberIds.contains(selfId) {
             NotificationManager.shared.scheduleQuestion(
                 questionId:   question.id,
-                memberId:     memberId,
-                memberName:   name,
-                memberEmoji:  emoji,
+                memberId:     selfId,
+                memberName:   senderName,
+                memberEmoji:  senderEmoji,
                 questionText: text,
                 choices:      choices
             )
             if let seconds = reminderAfter {
                 NotificationManager.shared.scheduleAutoReminder(
                     questionId:   question.id,
-                    memberId:     memberId,
-                    memberName:   name,
-                    memberEmoji:  emoji,
+                    memberId:     selfId,
+                    memberName:   senderName,
+                    memberEmoji:  senderEmoji,
                     questionText: text,
                     choices:      choices,
                     afterSeconds: seconds
@@ -196,37 +280,19 @@ class QuestionStore: ObservableObject {
     func sendToIndividuals(text: String, to friends: [Friend], choices: [AnswerChoice] = [.yes, .no], memo: String? = nil, reminderAfter: TimeInterval? = nil) {
         let answers  = friends.map { Answer(memberId: $0.id, value: "pending") }
         let question = Question(text: text, groupId: nil, answers: answers,
-                                choices: choices.map(\.rawValue), memo: memo)
+                                choices: choices.map(\.rawValue), memo: memo,
+                                createdBy: Auth.auth().currentUser?.uid)
         questions.append(question)
         saveQuestionToFirestore(question, friends: friends)
         NotificationManager.playOutgoingSound()
-
-        for friend in friends {
-            NotificationManager.shared.scheduleQuestion(
-                questionId:   question.id,
-                memberId:     friend.id,
-                memberName:   friend.name,
-                memberEmoji:  friend.emoji,
-                questionText: text,
-                choices:      choices
-            )
-            if let seconds = reminderAfter {
-                NotificationManager.shared.scheduleAutoReminder(
-                    questionId:   question.id,
-                    memberId:     friend.id,
-                    memberName:   friend.name,
-                    memberEmoji:  friend.emoji,
-                    questionText: text,
-                    choices:      choices,
-                    afterSeconds: seconds
-                )
-            }
-        }
     }
 
     // MARK: - 回答処理
 
     var onAnswered: ((UUID, UUID, String, String) -> Void)?
+    /// 回答が変更された際に呼ばれる（questionId, memberId, questionText, oldValue, newValue）
+    var onAnswerEdited: ((UUID, UUID, String, String, String) -> Void)?
+    var onReceivedQuestion: ((Question, UUID) -> Void)?
     var pointStore: PointStore?
     var senderMemberId: UUID?
     var senderName: String = ""
@@ -272,6 +338,48 @@ class QuestionStore: ObservableObject {
         applyPendingFromSharedStore()
     }
 
+    /// 一度だけ許可される回答の変更（ポイントは無効化され、Live Activity等の副作用は発生しない）
+    func editAnswer(questionId: UUID, memberId: UUID, newValue: String) {
+        guard let idx  = questions.firstIndex(where: { $0.id == questionId }),
+              let aidx = questions[idx].answers.firstIndex(where: { $0.memberId == memberId })
+        else { return }
+        let answer = questions[idx].answers[aidx]
+        guard answer.value != "pending", !answer.hasBeenEdited else { return }
+
+        let oldValue = answer.value
+        guard let answeredAt = answer.answeredAt else { return }
+
+        questions[idx].answers[aidx].value         = newValue
+        questions[idx].answers[aidx].hasBeenEdited = true
+
+        let question = questions[idx]
+        onAnswerEdited?(questionId, memberId, question.text, oldValue, newValue)
+
+        updateAnswerInFirestore(questionId: questionId, memberId: memberId,
+                                value: newValue, answeredAt: answeredAt, hasBeenEdited: true)
+    }
+
+    /// 受信質問への回答（フル機能：ポイント加算・チャット解放を行う）
+    func submitReceived(questionId: UUID, memberId: UUID, value: String) {
+        guard let idx  = receivedQuestions.firstIndex(where: { $0.id == questionId }),
+              let aidx = receivedQuestions[idx].answers.firstIndex(where: { $0.memberId == memberId }),
+              receivedQuestions[idx].answers[aidx].value == "pending"
+        else { return }
+
+        let now = Date()
+        receivedQuestions[idx].answers[aidx].value      = value
+        receivedQuestions[idx].answers[aidx].answeredAt = now
+
+        let question = receivedQuestions[idx]
+        let elapsed  = now.timeIntervalSince(question.createdAt)
+        pointStore?.add(questionId: questionId, memberId: memberId,
+                        questionText: question.text, elapsed: elapsed)
+        onAnswered?(questionId, memberId, question.text, value)
+
+        updateAnswerInFirestore(questionId: questionId, memberId: memberId,
+                                value: value, answeredAt: now)
+    }
+
     func applyPendingFromSharedStore() {
         guard let defaults = UserDefaults(suiteName: "group.com.yukichi.kiku") else { return }
         let keys = defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix("answer.") }
@@ -312,6 +420,8 @@ class QuestionStore: ObservableObject {
                         await ActivityManager.shared.update(questionId: qid, summary: s)
                     }
                 }
+            } else if receivedQuestions.contains(where: { $0.id == qid }) {
+                submitReceived(questionId: qid, memberId: mid, value: value)
             }
         }
     }
@@ -319,6 +429,15 @@ class QuestionStore: ObservableObject {
     func delete(questionId: UUID) {
         questions.removeAll { $0.id == questionId }
         db.collection("questions").document(questionId.uuidString).delete()
+    }
+
+    func sendReminder(questionId: UUID) {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        db.collection("reminderRequests").addDocument(data: [
+            "questionId":   questionId.uuidString,
+            "requestedBy":  uid,
+            "createdAt":    FieldValue.serverTimestamp()
+        ])
     }
 
     func deleteQuestions(forGroupId groupId: UUID) {
@@ -367,20 +486,23 @@ class QuestionStore: ObservableObject {
     }
 
     private func updateAnswerInFirestore(questionId: UUID, memberId: UUID,
-                                         value: String, answeredAt: Date) {
+                                         value: String, answeredAt: Date, hasBeenEdited: Bool? = nil) {
         let prefix = "answers.\(memberId.uuidString)"
-        db.collection("questions").document(questionId.uuidString).updateData([
+        var data: [String: Any] = [
             "\(prefix).value":      value,
             "\(prefix).answeredAt": Timestamp(date: answeredAt)
-        ])
+        ]
+        if let hasBeenEdited { data["\(prefix).hasBeenEdited"] = hasBeenEdited }
+        db.collection("questions").document(questionId.uuidString).updateData(data)
     }
 
     private func firestoreData(for question: Question, uid: String, friends: [Friend] = []) -> [String: Any] {
         var answersDict: [String: Any] = [:]
         for a in question.answers {
             answersDict[a.memberId.uuidString] = [
-                "value":      a.value,
-                "answeredAt": a.answeredAt.map { Timestamp(date: $0) } as Any
+                "value":         a.value,
+                "answeredAt":    a.answeredAt.map { Timestamp(date: $0) } as Any,
+                "hasBeenEdited": a.hasBeenEdited
             ]
         }
         var dict: [String: Any] = [
@@ -396,6 +518,14 @@ class QuestionStore: ObservableObject {
             .filter { f in question.answers.contains { $0.memberId == f.id } }
             .reduce(into: [String: Any]()) { $0[$1.id.uuidString] = $1.name }
         if !memberNamesDict.isEmpty { dict["memberNames"] = memberNamesDict }
+        let recipientUIDs = friends
+            .filter { f in question.answers.contains { $0.memberId == f.id } && !f.firebaseUID.isEmpty }
+            .map(\.firebaseUID)
+        if !recipientUIDs.isEmpty { dict["recipientUIDs"] = recipientUIDs }
+        let recipientMemberMap = friends
+            .filter { f in question.answers.contains { $0.memberId == f.id } && !f.firebaseUID.isEmpty }
+            .reduce(into: [String: Any]()) { $0[$1.firebaseUID] = $1.id.uuidString }
+        if !recipientMemberMap.isEmpty { dict["recipientMemberMap"] = recipientMemberMap }
         if let memo = question.memo, !memo.isEmpty { dict["memo"] = memo }
         return dict
     }
@@ -409,17 +539,20 @@ class QuestionStore: ObservableObject {
         let createdAt   = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
         let inviteToken = data["inviteToken"] as? String ?? UUID().uuidString
         let memo        = data["memo"] as? String
+        let createdBy   = data["createdBy"] as? String
 
         let answers: [Answer] = answersDict.compactMap { key, val in
             guard let memberId = UUID(uuidString: key),
                   let valDict  = val as? [String: Any],
                   let value    = valDict["value"] as? String else { return nil }
-            let answeredAt = (valDict["answeredAt"] as? Timestamp)?.dateValue()
-            return Answer(memberId: memberId, value: value, answeredAt: answeredAt)
+            let answeredAt    = (valDict["answeredAt"] as? Timestamp)?.dateValue()
+            let hasBeenEdited = valDict["hasBeenEdited"] as? Bool ?? false
+            return Answer(memberId: memberId, value: value, answeredAt: answeredAt, hasBeenEdited: hasBeenEdited)
         }
 
         return Question(id: id, text: text, groupId: groupId, answers: answers,
-                        createdAt: createdAt, choices: choices, inviteToken: inviteToken, memo: memo)
+                        createdAt: createdAt, choices: choices, inviteToken: inviteToken, memo: memo,
+                        createdBy: createdBy)
     }
 
     private func questionFromFirestore(_ doc: QueryDocumentSnapshot) -> Question? {

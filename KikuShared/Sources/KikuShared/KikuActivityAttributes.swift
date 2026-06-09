@@ -1,6 +1,31 @@
 import ActivityKit
 import Foundation
 
+// MARK: - 友達申請 Live Activity
+
+public struct FriendRequestActivityAttributes: ActivityAttributes {
+    public struct ContentState: Codable, Hashable {
+        public var status: String // "pending" | "accepted" | "declined"
+        public init(status: String = "pending") { self.status = status }
+    }
+
+    public var requestId: String
+    public var fromUID: String
+    public var fromName: String
+    public var fromEmoji: String
+    public var sentAt: Date
+
+    public init(requestId: String, fromUID: String, fromName: String, fromEmoji: String, sentAt: Date) {
+        self.requestId = requestId
+        self.fromUID   = fromUID
+        self.fromName  = fromName
+        self.fromEmoji = fromEmoji
+        self.sentAt    = sentAt
+    }
+}
+
+// MARK: - 質問 Live Activity
+
 public struct KikuActivityAttributes: ActivityAttributes {
     public struct ContentState: Codable, Hashable {
         public var yesCount: Int
@@ -19,14 +44,16 @@ public struct KikuActivityAttributes: ActivityAttributes {
     public var totalCount: Int
     public var memberId: String
     public var memberName: String
-    public var sentAt: Date        // 質問を送った時刻（カウントアップ基点）
+    public var sentAt: Date
+    public var choices: [String]
 
-    public init(questionId: String, questionText: String, totalCount: Int, memberId: String, memberName: String, sentAt: Date) {
+    public init(questionId: String, questionText: String, totalCount: Int, memberId: String, memberName: String, sentAt: Date, choices: [String] = ["yes", "no"]) {
         self.questionId = questionId
         self.questionText = questionText
         self.totalCount = totalCount
         self.memberId = memberId
         self.memberName = memberName
         self.sentAt = sentAt
+        self.choices = choices
     }
 }

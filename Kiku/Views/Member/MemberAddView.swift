@@ -8,8 +8,6 @@ private enum AddMode: String, CaseIterable {
 }
 
 struct MemberAddView: View {
-    var onAdd: (Friend) -> Void
-
     @EnvironmentObject private var friendStore:  FriendStore
     @EnvironmentObject private var profileStore: ProfileStore
     @Environment(\.dismiss) private var dismiss
@@ -22,6 +20,10 @@ struct MemberAddView: View {
     @State private var isSearching   = false
     @State private var errorMessage  = ""
     @State private var hasSearched   = false
+
+    // 申請
+    @State private var isSendingRequest = false
+    @State private var sentUserUID: String? = nil
 
     // スキャン
     @State private var scannedUser: FirestoreUser? = nil
@@ -58,7 +60,7 @@ struct MemberAddView: View {
                 qrError = ""
             }) {
                 if let user = scannedUser {
-                    ScannedUserConfirmView(user: user) {
+                    ScannedUserConfirmView(user: user, isSending: isSendingRequest, isSent: sentUserUID == user.uid) {
                         addFriend(user)
                     }
                 }
@@ -101,7 +103,7 @@ struct MemberAddView: View {
             .padding(.bottom, 16)
 
             if let result = searchResult {
-                userCard(result) { addFriend(result) }
+                userCard(result, isSent: sentUserUID == result.uid) { addFriend(result) }
                     .padding(.horizontal)
             } else if hasSearched && !isSearching {
                 Text(errorMessage.isEmpty ? "ユーザーが見つかりませんでした" : errorMessage)
@@ -165,13 +167,9 @@ struct MemberAddView: View {
 
     // MARK: - 共有ユーザーカード
 
-    private func userCard(_ user: FirestoreUser, onAdd: @escaping () -> Void) -> some View {
+    private func userCard(_ user: FirestoreUser, isSent: Bool = false, onAdd: @escaping () -> Void) -> some View {
         HStack(spacing: 12) {
-            Text(user.emoji)
-                .font(.largeTitle)
-                .frame(width: 52, height: 52)
-                .background(Color(UIColor.systemGray5))
-                .clipShape(Circle())
+            UserAvatarView(emoji: user.emoji, photoURL: user.photoURL, size: 52)
             VStack(alignment: .leading, spacing: 2) {
                 Text(user.name).font(.headline)
                 Text("@\(user.username)")
@@ -179,14 +177,27 @@ struct MemberAddView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button(action: onAdd) {
-                Text("追加")
-                    .font(.subheadline.weight(.semibold))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(Color.blue)
-                    .foregroundStyle(.white)
-                    .clipShape(Capsule())
+            if isSent {
+                Text("申請済み")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+            } else {
+                Button(action: onAdd) {
+                    if isSendingRequest {
+                        ProgressView()
+                            .frame(width: 60, height: 32)
+                    } else {
+                        Text("申請")
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(Color.blue)
+                            .foregroundStyle(.white)
+                            .clipShape(Capsule())
+                    }
+                }
+                .disabled(isSendingRequest)
             }
         }
         .padding()
@@ -241,15 +252,25 @@ struct MemberAddView: View {
     }
 
     private func addFriend(_ user: FirestoreUser) {
-        let friend = Friend(
-            firebaseUID:     user.uid,
-            name:            user.name,
-            emoji:           user.emoji,
-            activeHourStart: user.activeHourStart,
-            activeHourEnd:   user.activeHourEnd
-        )
-        onAdd(friend)
-        dismiss()
+        guard !isSendingRequest else { return }
+        isSendingRequest = true
+        Task {
+            defer { Task { @MainActor in isSendingRequest = false } }
+            do {
+                try await friendStore.sendFriendRequest(
+                    to:           user,
+                    fromName:     profileStore.name,
+                    fromEmoji:    profileStore.emoji,
+                    fromUsername: profileStore.username,
+                    fromPhotoURL: profileStore.photoURL
+                )
+                await MainActor.run { sentUserUID = user.uid }
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                await MainActor.run { dismiss() }
+            } catch {
+                print("[MemberAddView] sendFriendRequest error: \(error)")
+            }
+        }
     }
 }
 
@@ -257,6 +278,8 @@ struct MemberAddView: View {
 
 private struct ScannedUserConfirmView: View {
     let user: FirestoreUser
+    let isSending: Bool
+    let isSent: Bool
     let onAdd: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -268,11 +291,7 @@ private struct ScannedUserConfirmView: View {
                 .foregroundStyle(Color(UIColor.systemGray4))
                 .padding(.top, 12)
 
-            Text(user.emoji)
-                .font(.system(size: 64))
-                .frame(width: 88, height: 88)
-                .background(Color(UIColor.systemGray5))
-                .clipShape(Circle())
+            UserAvatarView(emoji: user.emoji, photoURL: user.photoURL, size: 88)
 
             VStack(spacing: 4) {
                 Text(user.name)
@@ -285,14 +304,24 @@ private struct ScannedUserConfirmView: View {
                 Button {
                     onAdd()
                 } label: {
-                    Text("友達に追加")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(Color.blue)
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                    Group {
+                        if isSent {
+                            Label("申請を送りました", systemImage: "checkmark")
+                        } else if isSending {
+                            ProgressView()
+                                .frame(height: 20)
+                        } else {
+                            Text("友達申請を送る")
+                        }
+                    }
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(isSent ? Color.green : Color.blue)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
+                .disabled(isSending || isSent)
 
                 Button("キャンセル", role: .cancel) { dismiss() }
                     .foregroundStyle(.secondary)
@@ -308,7 +337,7 @@ private struct ScannedUserConfirmView: View {
 }
 
 #Preview {
-    MemberAddView { _ in }
+    MemberAddView()
         .environmentObject(FriendStore())
         .environmentObject(ProfileStore())
 }

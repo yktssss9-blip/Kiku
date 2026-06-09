@@ -107,16 +107,11 @@ struct QuestionFeedCard: View {
     @ViewBuilder
     private func memberRow(answer: Answer) -> some View {
         let friend    = friends.first { $0.id == answer.memberId }
-        let emoji     = friend?.emoji ?? "👤"
-        let name      = friend?.name  ?? "不明"
+        let name      = friend?.name ?? "不明"
         let isPending = answer.value == "pending"
 
         HStack(spacing: 10) {
-            Text(emoji)
-                .font(.system(size: 18))
-                .frame(width: 34, height: 34)
-                .background(Color(UIColor.tertiarySystemBackground))
-                .clipShape(Circle())
+            UserAvatarView(emoji: friend?.emoji ?? "👤", photoURL: friend?.photoURL, size: 34)
 
             Text(name)
                 .font(.subheadline)
@@ -227,22 +222,13 @@ struct QuestionFeedCard: View {
 
     private func sendReminders() {
         let pending = currentQuestion.answers.filter { $0.value == "pending" }
-        let targets: [(Answer, Friend)] = pending.compactMap { answer in
-            guard let friend = friends.first(where: { $0.id == answer.memberId })
-            else { return nil }
-            return (answer, friend)
-        }
-        for (_, friend) in targets {
-            NotificationManager.shared.scheduleQuestion(
-                questionId:   currentQuestion.id,
-                memberId:     friend.id,
-                memberName:   friend.name,
-                memberEmoji:  friend.emoji,
-                questionText: currentQuestion.text,
-                choices:      currentQuestion.answerChoices
-            )
+        let targets = pending.filter { answer in
+            friends.contains { $0.id == answer.memberId }
         }
         reminderCount = targets.count
+        if !targets.isEmpty {
+            questionStore.sendReminder(questionId: currentQuestion.id)
+        }
         showReminderAlert = true
     }
 }

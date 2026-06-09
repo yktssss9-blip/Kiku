@@ -5,5 +5,6 @@ import SwiftUI
 struct KikuWidgetBundle: WidgetBundle {
     var body: some Widget {
         KikuLiveActivityWidget()
+        FriendRequestLiveActivityWidget()
     }
 }
