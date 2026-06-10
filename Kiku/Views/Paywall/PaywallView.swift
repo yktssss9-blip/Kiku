@@ -100,14 +100,23 @@ private struct ProPaywallContent: View {
 
     private var headerSection: some View {
         VStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 22)
-                .fill(Color(.label))
-                .frame(width: 88, height: 88)
-                .overlay {
-                    Image(systemName: "bubble.left.and.bubble.right.fill")
-                        .font(.system(size: 38))
-                        .foregroundStyle(Color(.systemBackground))
+            Group {
+                if let icon = UIImage(named: "AppIcon") {
+                    Image(uiImage: icon)
+                        .resizable()
+                        .frame(width: 88, height: 88)
+                        .clipShape(RoundedRectangle(cornerRadius: 22))
+                } else {
+                    RoundedRectangle(cornerRadius: 22)
+                        .fill(Color(.label))
+                        .frame(width: 88, height: 88)
+                        .overlay {
+                            Image(systemName: "bubble.left.and.bubble.right.fill")
+                                .font(.system(size: 38))
+                                .foregroundStyle(Color(.systemBackground))
+                        }
                 }
+            }
 
             Text("きく Pro")
                 .font(.title.bold())
@@ -209,11 +218,8 @@ private struct ProPaywallContent: View {
 
     private func purchaseLabel(for package: Package) -> String {
         let price = package.localizedPriceString
-        switch package.packageType {
-        case .annual:  return "\(price) で購入（年額）"
-        case .monthly: return "\(price) で購入"
-        default:       return "\(price) で購入"
-        }
+        let priceText = price.isEmpty ? "" : "（\(price)）"
+        return "Proプランにアップグレード\(priceText)"
     }
 }
 
@@ -246,7 +252,7 @@ private struct PackageCard: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
-                Text(package.localizedPriceString)
+                Text(package.localizedPriceString.isEmpty ? "−" : package.localizedPriceString)
                     .font(.title3.bold())
                     .foregroundStyle(isSelected ? .white : .primary)
                 if let period = pricePeriod {
