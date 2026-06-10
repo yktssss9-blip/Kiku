@@ -106,6 +106,7 @@ struct KikuApp: App {
                     ) { _ in
                         questionStore.applyPendingFromSharedStore()
                         applyPendingOpenPickers()
+                        Task { await friendStore.refreshFriendProfiles() }
                         Task {
                             try? await UNUserNotificationCenter.current().setBadgeCount(chatStore.totalUnread)
                         }

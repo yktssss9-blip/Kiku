@@ -241,6 +241,11 @@ struct ProfileSetupView: View {
         store.emoji           = "👤"
         store.activeHourStart = activeHourStart
         store.activeHourEnd   = activeHourEnd
+
+        if let data = selectedData,
+           let url = try? await store.uploadProfilePhoto(data) {
+            store.photoURL = url
+        }
     }
 }
 
