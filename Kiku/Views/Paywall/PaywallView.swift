@@ -197,13 +197,13 @@ private struct ProPaywallContent: View {
             } label: {
                 Group {
                     if purchaseStore.isLoading {
-                        ProgressView().tint(.white)
+                        ProgressView().tint(Color(.systemBackground))
                     } else if let pkg = selectedPackage {
                         Text(purchaseLabel(for: pkg))
                     }
                 }
                 .font(.headline)
-                .foregroundStyle(.white)
+                .foregroundStyle(Color(.systemBackground))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
                 .background(Color(.label), in: RoundedRectangle(cornerRadius: 14))
@@ -235,30 +235,30 @@ private struct PackageCard: View {
                 HStack(spacing: 8) {
                     Text(planTitle)
                         .font(.headline)
-                        .foregroundStyle(isSelected ? .white : .primary)
+                        .foregroundStyle(isSelected ? Color(.systemBackground) : .primary)
                     if isRecommended {
                         Text("おすすめ")
                             .font(.caption.weight(.semibold))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3)
-                            .background(isSelected ? Color.white.opacity(0.25) : Color.accentColor.opacity(0.15))
-                            .foregroundStyle(isSelected ? .white : .accentColor)
+                            .background(isSelected ? Color(.systemBackground).opacity(0.25) : Color.accentColor.opacity(0.15))
+                            .foregroundStyle(isSelected ? Color(.systemBackground) : .accentColor)
                             .clipShape(Capsule())
                     }
                 }
                 Text(planDescription)
                     .font(.caption)
-                    .foregroundStyle(isSelected ? .white.opacity(0.7) : .secondary)
+                    .foregroundStyle(isSelected ? Color(.systemBackground).opacity(0.7) : .secondary)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
                 Text(package.localizedPriceString.isEmpty ? "−" : package.localizedPriceString)
                     .font(.title3.bold())
-                    .foregroundStyle(isSelected ? .white : .primary)
+                    .foregroundStyle(isSelected ? Color(.systemBackground) : .primary)
                 if let period = pricePeriod {
                     Text(period)
                         .font(.caption)
-                        .foregroundStyle(isSelected ? .white.opacity(0.7) : .secondary)
+                        .foregroundStyle(isSelected ? Color(.systemBackground).opacity(0.7) : .secondary)
                 }
             }
         }

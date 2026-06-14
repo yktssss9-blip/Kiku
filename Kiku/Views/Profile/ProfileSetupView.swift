@@ -3,6 +3,7 @@ import PhotosUI
 
 struct ProfileSetupView: View {
     @ObservedObject var store: ProfileStore
+    @EnvironmentObject private var authStore: AuthStore
 
     @State private var name             = ""
     @State private var username         = ""
@@ -213,6 +214,9 @@ struct ProfileSetupView: View {
             .padding(.bottom, 40)
         }
         .task {
+            if name.isEmpty && !authStore.appleDisplayName.isEmpty {
+                name = authStore.appleDisplayName
+            }
             guard username.isEmpty else { return }
             await regenerateUsername()
         }

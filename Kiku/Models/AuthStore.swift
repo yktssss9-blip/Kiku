@@ -8,6 +8,7 @@ class AuthStore: ObservableObject {
     @Published var user: User? = nil
     @Published var isLoading = true
     @Published var errorMessage: String? = nil
+    @Published var appleDisplayName: String = ""
 
     private var handle: AuthStateDidChangeListenerHandle?
     private var currentNonce: String?
@@ -53,6 +54,9 @@ class AuthStore: ObservableObject {
                 rawNonce: nonce,
                 fullName: credential.fullName
             )
+            let parts = [credential.fullName?.givenName, credential.fullName?.familyName]
+                .compactMap { $0 }.filter { !$0.isEmpty }
+            if !parts.isEmpty { appleDisplayName = parts.joined(separator: " ") }
             Task { @MainActor in await signInOrLink(with: firebaseCredential) }
 
         case .failure(let error):
