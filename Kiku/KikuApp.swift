@@ -182,6 +182,7 @@ struct KikuApp: App {
                     .onOpenURL { url in pendingInviteURL = url }
             } else {
                 ProfileSetupView(store: profileStore)
+                    .environmentObject(authStore)
                     .onOpenURL { url in pendingInviteURL = url }
             }
         }
