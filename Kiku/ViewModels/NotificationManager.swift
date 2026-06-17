@@ -167,14 +167,15 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         memberName:   String,
         memberEmoji:  String,
         questionText: String,
-        choices:      [AnswerChoice] = [.yes, .no]
+        choices:      [AnswerChoice] = [.yes, .no],
+        overrideSenderName:  String? = nil,
+        overrideSenderEmoji: String? = nil
     ) {
-        // 送信者プロフィールを App Group UserDefaults から読み込む
         let appGroup        = UserDefaults(suiteName: "group.com.yukichi.kiku")
-        let senderName      = appGroup?.string(forKey: "kiku.profile.name")     ?? "きく"
-        let senderEmoji     = appGroup?.string(forKey: "kiku.profile.emoji")    ?? "👤"
-        let senderIconMode  = appGroup?.string(forKey: "kiku.profile.iconMode") ?? "emoji"
-        let senderPhotoData = appGroup?.data(forKey: "kiku.profile.photo")
+        let senderName      = overrideSenderName  ?? appGroup?.string(forKey: "kiku.profile.name")     ?? "きく"
+        let senderEmoji     = overrideSenderEmoji ?? appGroup?.string(forKey: "kiku.profile.emoji")    ?? "👤"
+        let senderIconMode  = overrideSenderName != nil ? "emoji" : (appGroup?.string(forKey: "kiku.profile.iconMode") ?? "emoji")
+        let senderPhotoData = overrideSenderName != nil ? nil     : appGroup?.data(forKey: "kiku.profile.photo")
 
         let content = UNMutableNotificationContent()
         content.title               = "\(senderEmoji) \(senderName)さんから質問が届きました"

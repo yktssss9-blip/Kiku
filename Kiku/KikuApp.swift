@@ -428,13 +428,24 @@ struct KikuApp: App {
             }
         }
 
-        // 他ユーザーから届いた質問を検知 → 自分のLive Activityを起動
+        // 他ユーザーから届いた質問を検知 → Live Activity + ローカル通知
         questionStore.onReceivedQuestion = { question, memberId in
+            let senderFriend = friendStore.friends.first { $0.firebaseUID == question.createdBy }
             Task { @MainActor in
                 ActivityManager.shared.start(
                     question:   question,
                     memberId:   memberId,
                     memberName: profileStore.name
+                )
+                NotificationManager.shared.scheduleQuestion(
+                    questionId:          question.id,
+                    memberId:            memberId,
+                    memberName:          profileStore.name,
+                    memberEmoji:         profileStore.emoji,
+                    questionText:        question.text,
+                    choices:             question.answerChoices,
+                    overrideSenderName:  senderFriend?.name  ?? "きく",
+                    overrideSenderEmoji: senderFriend?.emoji ?? "👤"
                 )
             }
         }

@@ -19,6 +19,7 @@ struct MemberListView: View {
             .map { RankedEntry(rank: 0, friend: $0,
                                avgSpeed: pointStore.averageSpeed(for: $0.id),
                                isMe: $0.id == profileStore.myId) }
+            .filter { $0.avgSpeed != nil }
             .sorted {
                 switch ($0.avgSpeed, $1.avgSpeed) {
                 case (.some(let a), .some(let b)): return a < b
