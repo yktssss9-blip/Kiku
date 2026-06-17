@@ -546,11 +546,11 @@ struct AnswerView: View {
 
     private var urgencyBanner: some View {
         let tier = currentTier
-        let (icon, label, pts, accent): (String, String, String, Color) = {
+        let (icon, label, accent): (String, String, Color) = {
             switch tier {
-            case .fast:   return ("⚡️", "超速ボーナス中",  "+20pt", .orange)
-            case .normal: return ("🕐", "早い回答ボーナス中", "+10pt", .blue)
-            default:      return ("💬", "普通",            "+2pt",  Color(UIColor.systemGray))
+            case .fast:   return ("⚡️", "超速！",  .orange)
+            case .normal: return ("🕐", "早い回答", .blue)
+            default:      return ("💬", "普通",     Color(UIColor.systemGray))
             }
         }()
 
@@ -575,16 +575,10 @@ struct AnswerView: View {
                 Text(icon).font(.title3)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(label)
-                            .font(.subheadline)
-                            .fontWeight(.bold)
-                            .foregroundStyle(accent)
-                        Text(pts)
-                            .font(.subheadline)
-                            .fontWeight(.heavy)
-                            .foregroundStyle(accent)
-                    }
+                    Text(label)
+                        .font(.subheadline)
+                        .fontWeight(.bold)
+                        .foregroundStyle(accent)
                     if let rem = remaining {
                         Text("残り\(Int(rem))秒")
                             .font(.caption)

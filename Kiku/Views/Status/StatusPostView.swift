@@ -85,8 +85,7 @@ struct StatusPostView: View {
 
     private var previewCard: some View {
         HStack(spacing: 12) {
-            Text(profileStore.emoji)
-                .font(.system(size: 40))
+            UserAvatarView(emoji: profileStore.emoji, photoURL: profileStore.photoURL, size: 52)
             VStack(alignment: .leading, spacing: 2) {
                 Text(profileStore.name)
                     .font(.caption)

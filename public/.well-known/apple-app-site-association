@@ -1,0 +1,14 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["TT6KR8QU45.com.yukichi.kiku"],
+        "components": [
+          {
+            "/": "/q/*"
+          }
+        ]
+      }
+    ]
+  }
+}

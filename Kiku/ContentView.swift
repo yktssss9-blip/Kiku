@@ -112,31 +112,20 @@ struct SettingsView: View {
                 // プロフィールカード（社員証）
                 Section {
                     VStack(spacing: 10) {
-                        ProfileIDCard(
-                            name:         profileStore.name,
-                            emoji:        profileStore.emoji,
-                            profileImage: profileStore.profileImage,
-                            username:     profileStore.username,
-                            rank:         myRankInfo.rank,
-                            outOf:        myRankInfo.outOf,
-                            avgSpeed:     pointStore.averageSpeed(for: profileStore.myId),
-                            answerCount:  pointStore.history(for: profileStore.myId).count,
-                            isPro:        purchaseStore.isPro
-                        )
                         Button {
                             isEditingProfile = true
                         } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "pencil")
-                                Text("プロフィールを編集")
-                            }
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(Color(UIColor.secondarySystemBackground))
-                            .foregroundStyle(.primary)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            ProfileIDCard(
+                                name:         profileStore.name,
+                                emoji:        profileStore.emoji,
+                                profileImage: profileStore.profileImage,
+                                username:     profileStore.username,
+                                rank:         myRankInfo.rank,
+                                outOf:        myRankInfo.outOf,
+                                avgSpeed:     pointStore.averageSpeed(for: profileStore.myId),
+                                answerCount:  pointStore.history(for: profileStore.myId).count,
+                                isPro:        purchaseStore.isPro
+                            )
                         }
                         .buttonStyle(.plain)
 
@@ -275,11 +264,7 @@ struct SettingsView: View {
                             ForEach(friendStore.friends) { friend in
                                 let blocked = friendStore.isBlocked(friend.id)
                                 HStack(spacing: 12) {
-                                    Text(friend.emoji)
-                                        .font(.title3)
-                                        .frame(width: 36, height: 36)
-                                        .background(Color(UIColor.tertiarySystemBackground))
-                                        .clipShape(Circle())
+                                    UserAvatarView(emoji: friend.emoji, photoURL: friend.photoURL, size: 36)
                                         .opacity(blocked ? 0.4 : 1)
 
                                     VStack(alignment: .leading, spacing: 2) {

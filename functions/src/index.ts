@@ -466,6 +466,77 @@ export const notifyOnFriendRequest = onDocumentCreated(
   }
 );
 
+// MARK: - 友達申請承認通知
+
+export const notifyOnFriendRequestAccepted = onDocumentUpdated(
+  {
+    document: "friendRequests/{requestId}",
+    secrets: [apnsAuthKey, apnsKeyId, apnsTeamId],
+  },
+  async (event) => {
+    const before = event.data?.before.data();
+    const after = event.data?.after.data();
+    if (!before || !after) return;
+
+    // pending → accepted の変化のみ処理
+    if (before.status === "accepted" || after.status !== "accepted") return;
+
+    const fromUID: string = after.fromUID ?? "";
+    const toName: string = after.toName ?? "きく";
+    const toEmoji: string = after.toEmoji ?? "👤";
+    const toUsername: string = after.toUsername ?? "";
+    const requestId = event.params.requestId;
+
+    if (!fromUID) return;
+
+    const userDoc = await admin.firestore().collection("users").doc(fromUID).get();
+    const apnsToken = userDoc.get("apnsDeviceToken") as string | undefined;
+    const fcmToken = userDoc.get("fcmToken") as string | undefined;
+
+    if (!apnsToken && !fcmToken) {
+      logger.info(`notifyOnFriendRequestAccepted: トークン未登録 uid=${fromUID}`);
+      return;
+    }
+
+    const notificationTitle = `${toEmoji} ${toName}さんが友達申請を承認しました`;
+    const notificationBody = `@${toUsername}`;
+    const extraData = {
+      type: "friendRequestAccepted",
+      requestId,
+      toUID: after.toUID ?? "",
+      toName,
+      toEmoji,
+      toPhotoURL: after.toPhotoURL ?? "",
+    };
+
+    if (apnsToken) {
+      const payload = {
+        aps: {
+          alert: { title: notificationTitle, body: notificationBody },
+          sound: "default",
+        },
+        ...extraData,
+      };
+      try {
+        await sendRegularApnsPush(apnsToken, payload);
+        logger.info(`友達申請承認通知送信(APNs): requestId=${requestId} to=${fromUID}`);
+        return;
+      } catch (error) {
+        logger.error(`友達申請承認APNs送信失敗 uid=${fromUID}`, error);
+      }
+    }
+
+    if (fcmToken) {
+      await admin.messaging().send({
+        token: fcmToken,
+        notification: { title: notificationTitle, body: notificationBody },
+        data: extraData,
+      });
+      logger.info(`友達申請承認通知送信(FCM): requestId=${requestId} to=${fromUID}`);
+    }
+  }
+);
+
 // MARK: - テンプレート自動送信
 
 /**

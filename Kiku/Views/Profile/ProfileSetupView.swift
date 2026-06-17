@@ -239,17 +239,25 @@ struct ProfileSetupView: View {
             return
         }
 
+        guard let data = selectedData else { return }
+
+        // 写真を先にアップロードしてURLを取得（失敗したらここで止める）
+        let uploadedURL: String
+        do {
+            uploadedURL = try await store.uploadProfilePhoto(data)
+        } catch {
+            errorMessage = "写真のアップロードに失敗しました。もう一度試してください。"
+            return
+        }
+
+        // アップロード成功後にプロフィールをまとめて設定
         store.name            = name.trimmingCharacters(in: .whitespaces)
-        store.photoData       = selectedData
-        store.iconMode        = .photo
+        store.photoData       = data
         store.emoji           = "👤"
         store.activeHourStart = activeHourStart
         store.activeHourEnd   = activeHourEnd
-
-        if let data = selectedData,
-           let url = try? await store.uploadProfilePhoto(data) {
-            store.photoURL = url
-        }
+        store.photoURL        = uploadedURL
+        store.iconMode        = .photo
     }
 }
 

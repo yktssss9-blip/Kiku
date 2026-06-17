@@ -21,10 +21,22 @@ struct SendTabView: View {
     @State private var reminderSeconds:      TimeInterval? = nil
     @State private var isShowingReminderMenu: Bool       = false
     @State private var showPaywall:          Bool        = false
+    @State private var searchText:           String      = ""
+    @State private var isSearching:          Bool        = false
+
+    @Namespace private var selectionNamespace
 
     private var canSend: Bool {
         !questionText.trimmingCharacters(in: .whitespaces).isEmpty
             && (!selectedFriends.isEmpty || selectedGroup != nil)
+    }
+
+    private var filteredFriends: [Friend] {
+        let visible = friendStore.friends.filter { f in
+            !friendStore.isBlocked(f.id) && !selectedFriends.contains { $0.id == f.id }
+        }
+        guard !searchText.isEmpty else { return visible }
+        return visible.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
     }
 
     var body: some View {
@@ -40,14 +52,13 @@ struct SendTabView: View {
                     .padding(.top, 16)
                     .padding(.bottom, 8)
 
-                // ─── 友達グリッド ───
-                friendGrid
-                    .padding(.horizontal, 20)
+                // ─── 友達横スクロール行 ───
+                friendRow
 
                 // ─── グループ横スクロール ───
                 if !groupStore.groups.isEmpty {
                     groupScroll
-                        .padding(.top, 16)
+                        .padding(.top, 12)
                 }
 
                 // ─── 選択済み表示エリア ───
@@ -106,79 +117,131 @@ struct SendTabView: View {
         .task { await friendStore.fetchStopTimeStatuses() }
     }
 
-    // MARK: - 友達グリッド
+    // MARK: - 友達横スクロール行
 
-    private var friendGrid: some View {
-        let columns = Array(repeating: GridItem(.flexible(), spacing: 16), count: 3)
-        return LazyVGrid(columns: columns, spacing: 20) {
-            ForEach(friendStore.friends.filter { !friendStore.isBlocked($0.id) }) { friend in
-                friendCircle(friend)
+    private var friendRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 16) {
+                searchToggle
+                ForEach(filteredFriends) { friend in
+                    friendCircle(friend)
+                }
+                addFriendCircle
             }
-            addFriendCircle
+            .padding(.horizontal, 20)
+            .padding(.vertical, 4)
+        }
+    }
+
+    private var searchToggle: some View {
+        Group {
+            if isSearching {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                    TextField("名前で検索", text: $searchText)
+                        .font(.subheadline)
+                        .frame(minWidth: 100)
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            searchText = ""
+                            isSearching = false
+                        }
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color(UIColor.secondarySystemFill))
+                .clipShape(Capsule())
+                .frame(height: 68)
+                .transition(.asymmetric(
+                    insertion: .scale(scale: 0.85).combined(with: .opacity),
+                    removal:   .scale(scale: 0.85).combined(with: .opacity)
+                ))
+            } else {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isSearching = true
+                    }
+                } label: {
+                    VStack(spacing: 4) {
+                        ZStack {
+                            Circle()
+                                .stroke(style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                                .foregroundStyle(Color(UIColor.separator))
+                                .frame(width: 60, height: 60)
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 20))
+                                .foregroundStyle(.tertiary)
+                        }
+                        Text("検索")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .transition(.asymmetric(
+                    insertion: .scale(scale: 0.85).combined(with: .opacity),
+                    removal:   .scale(scale: 0.85).combined(with: .opacity)
+                ))
+            }
         }
     }
 
     @ViewBuilder
     private func friendCircle(_ friend: Friend) -> some View {
-        let isSelected = selectedFriends.contains { $0.id == friend.id }
         Button {
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.65)) {
-                if isSelected {
-                    selectedFriends.removeAll { $0.id == friend.id }
-                } else {
-                    selectedFriends.append(friend)
-                    selectedGroup = nil
-                }
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.6)) {
+                selectedFriends.append(friend)
+                selectedGroup = nil
             }
         } label: {
             let isStopTime = friendStore.isStopTime(friend)
-            VStack(spacing: 6) {
+            VStack(spacing: 4) {
                 ZStack {
                     Circle()
                         .fill(Color(UIColor.tertiarySystemFill))
-                        .frame(width: 72, height: 72)
-
-                    if isSelected {
-                        Circle()
-                            .stroke(Color.primary, lineWidth: 2)
-                            .frame(width: 72, height: 72)
-                    }
-
-                    UserAvatarView(emoji: friend.emoji, photoURL: friend.photoURL, size: 72)
-
+                        .frame(width: 60, height: 60)
+                    UserAvatarView(emoji: friend.emoji, photoURL: friend.photoURL, size: 60)
                     if isStopTime {
                         Image(systemName: "pause.circle.fill")
-                            .font(.system(size: 16))
+                            .font(.system(size: 14))
                             .foregroundStyle(.orange)
                             .background(Color(UIColor.systemBackground), in: Circle())
-                            .offset(x: 24, y: 24)
+                            .offset(x: 20, y: 20)
                     }
                 }
                 .grayscale(isStopTime ? 1.0 : 0)
                 .opacity(isStopTime ? 0.5 : 1.0)
-                .scaleEffect(isSelected ? 1.08 : 1.0)
+                .matchedGeometryEffect(id: "avatar_\(friend.id)", in: selectionNamespace)
 
                 Text(friend.name)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .frame(width: 60)
             }
         }
         .buttonStyle(.plain)
+        .transition(.scale(scale: 0.8).combined(with: .opacity))
     }
 
     private var addFriendCircle: some View {
         Button { showAddFriend = true } label: {
-            VStack(spacing: 6) {
+            VStack(spacing: 4) {
                 ZStack {
                     Circle()
                         .fill(Color(UIColor.quaternarySystemFill))
-                        .frame(width: 72, height: 72)
+                        .frame(width: 60, height: 60)
                     Circle()
                         .stroke(Color(UIColor.separator), lineWidth: 1)
-                        .frame(width: 72, height: 72)
+                        .frame(width: 60, height: 60)
                     Image(systemName: "plus")
-                        .font(.system(size: 22, weight: .medium))
+                        .font(.system(size: 20, weight: .medium))
                         .foregroundStyle(.tertiary)
                 }
                 Text("追加")
@@ -260,25 +323,31 @@ struct SendTabView: View {
             if !selectedFriends.isEmpty {
                 HStack(spacing: selectedFriends.count > 3 ? 8 : 16) {
                     ForEach(selectedFriends) { friend in
-                        VStack(spacing: 6) {
-                            ZStack {
-                                Circle()
-                                    .fill(Color(UIColor.tertiarySystemFill))
-                                    .frame(width: 64, height: 64)
-                                Circle()
-                                    .stroke(Color.primary, lineWidth: 1.5)
-                                    .frame(width: 64, height: 64)
-                                UserAvatarView(emoji: friend.emoji, photoURL: friend.photoURL, size: 64)
+                        Button {
+                            withAnimation(.spring(response: 0.45, dampingFraction: 0.6)) {
+                                selectedFriends.removeAll { $0.id == friend.id }
                             }
-                            Text(friend.name)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                        } label: {
+                            VStack(spacing: 6) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color(UIColor.tertiarySystemFill))
+                                        .frame(width: 64, height: 64)
+                                    Circle()
+                                        .stroke(Color.primary, lineWidth: 1.5)
+                                        .frame(width: 64, height: 64)
+                                    UserAvatarView(emoji: friend.emoji, photoURL: friend.photoURL, size: 64)
+                                }
+                                .matchedGeometryEffect(id: "avatar_\(friend.id)", in: selectionNamespace)
+
+                                Text(friend.name)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
                         }
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .top).combined(with: .scale(scale: 0.4)).combined(with: .opacity),
-                            removal:   .move(edge: .top).combined(with: .opacity)
-                        ))
+                        .buttonStyle(.plain)
+                        .transition(.opacity)
                     }
                 }
             } else if let group = selectedGroup {

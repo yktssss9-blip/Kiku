@@ -206,6 +206,11 @@ class QuestionStore: ObservableObject {
                     if let aidx = merged[idx].answers.firstIndex(where: { $0.memberId == fsAnswer.memberId }) {
                         if merged[idx].answers[aidx].value == "pending" && fsAnswer.value != "pending" {
                             merged[idx].answers[aidx] = fsAnswer
+                            if let answeredAt = fsAnswer.answeredAt {
+                                let elapsed = answeredAt.timeIntervalSince(merged[idx].createdAt)
+                                pointStore?.add(questionId: q.id, memberId: fsAnswer.memberId,
+                                                questionText: q.text, elapsed: elapsed)
+                            }
                         }
                     } else {
                         // 招待リンク経由で追加された回答をマージ

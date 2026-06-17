@@ -126,6 +126,15 @@ struct ChatView: View {
         } label: {
             Label("共有", systemImage: "square.and.arrow.up")
         }
+
+        if message.isFromMe {
+            Divider()
+            Button(role: .destructive) {
+                chatStore.deleteMessage(messageId: message.id, sessionId: session.id)
+            } label: {
+                Label("削除", systemImage: "trash")
+            }
+        }
     }
 
     // MARK: - カレンダー追加
@@ -298,6 +307,7 @@ struct MessageBubble: View {
 
     @EnvironmentObject private var chatStore: ChatStore
     @EnvironmentObject private var profileStore: ProfileStore
+    @EnvironmentObject private var friendStore: FriendStore
 
     var body: some View {
         VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
@@ -346,19 +356,18 @@ struct MessageBubble: View {
                 .background(Color.blue)
                 .foregroundStyle(.white)
                 .clipShape(RoundedRectangle(cornerRadius: 18))
-            Text(myEmoji)
-                .font(.title3)
-                .frame(width: 32, height: 32)
+            UserAvatarView(emoji: profileStore.emoji, photoURL: profileStore.photoURL, size: 32)
         }
     }
 
     private var theirBubble: some View {
         HStack(alignment: .top, spacing: 8) {
-            Text(message.senderEmoji.isEmpty ? "👤" : message.senderEmoji)
-                .font(.title3)
-                .frame(width: 32, height: 32)
-                .background(Color(UIColor.secondarySystemBackground))
-                .clipShape(Circle())
+            let senderPhotoURL = message.senderFirebaseUID.flatMap { uid in
+                friendStore.friends.first { $0.firebaseUID == uid }?.photoURL
+            }
+            UserAvatarView(emoji: message.senderEmoji.isEmpty ? "👤" : message.senderEmoji,
+                           photoURL: senderPhotoURL,
+                           size: 32)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(message.senderName.isEmpty ? "メンバー" : message.senderName)

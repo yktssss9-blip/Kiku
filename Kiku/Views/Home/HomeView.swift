@@ -34,7 +34,7 @@ struct HomeView: View {
     @State private var questionToDelete: Question? = nil
     @State private var showDeleteQuestionAlert  = false
     @State private var isCompletedExpanded      = false
-    @State private var isFriendRequestExpanded  = true
+    @State private var isFriendRequestExpanded  = false
 
     private var hasFriendActivity: Bool {
         !friendStore.pendingRequests.isEmpty || !friendStore.sentRequests.isEmpty

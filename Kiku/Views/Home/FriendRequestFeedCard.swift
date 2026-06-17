@@ -82,7 +82,8 @@ struct ReceivedFriendRequestCard: View {
                     fromUID:      request.fromUID,
                     fromName:     request.fromName,
                     fromEmoji:    request.fromEmoji,
-                    fromPhotoURL: request.fromPhotoURL
+                    fromPhotoURL: request.fromPhotoURL,
+                    fromUsername: request.fromUsername
                 )
             } else {
                 await friendStore.declineFriendRequest(requestId: request.id)

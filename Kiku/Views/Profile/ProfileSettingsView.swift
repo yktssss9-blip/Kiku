@@ -36,6 +36,9 @@ struct ProfileSettingsView: View {
     @State private var selectedImage: UIImage?      = nil
     @State private var showDeletePhotoConfirm       = false
     @State private var showSavedToast               = false
+    @State private var uploadErrorMessage           = ""
+    @State private var rawPickedImage: UIImage?     = nil
+    @State private var showCrop                     = false
     @State private var activeHourStart   = 9
     @State private var activeHourEnd     = 12
 
@@ -60,8 +63,27 @@ struct ProfileSettingsView: View {
                 // アバター + アイコン種別セレクター
                 Section {
                     VStack(spacing: 16) {
-                        avatarView
-                            .frame(width: 100, height: 100)
+                        PhotosPicker(selection: $photoItem, matching: .images) {
+                            ZStack(alignment: .bottomTrailing) {
+                                avatarView
+                                    .frame(width: 100, height: 100)
+                                Image(systemName: "camera.circle.fill")
+                                    .font(.system(size: 26))
+                                    .foregroundStyle(.white, Color.blue)
+                                    .background(Color(UIColor.systemBackground).clipShape(Circle()).padding(1))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .onChange(of: photoItem) { _, newItem in
+                            Task {
+                                if let data = try? await newItem?.loadTransferable(type: Data.self),
+                                   let uiImage = UIImage(data: data) {
+                                    rawPickedImage = uiImage
+                                    iconType = .photo
+                                    showCrop = true
+                                }
+                            }
+                        }
 
                         Picker("", selection: $iconType) {
                             ForEach(IconType.allCases, id: \.self) { type in
@@ -184,16 +206,6 @@ struct ProfileSettingsView: View {
                         HStack {
                             Spacer()
                             VStack(spacing: 12) {
-                                PhotosPicker(selection: $photoItem, matching: .images) {
-                                    Label("写真を選ぶ", systemImage: "photo.on.rectangle")
-                                        .font(.subheadline)
-                                        .padding(.horizontal, 20)
-                                        .padding(.vertical, 10)
-                                        .background(Color.blue.opacity(0.1))
-                                        .foregroundStyle(.blue)
-                                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                                }
-
                                 if store.photoData != nil || selectedImage != nil {
                                     Button(role: .destructive) {
                                         showDeletePhotoConfirm = true
@@ -205,7 +217,6 @@ struct ProfileSettingsView: View {
                                         Button("削除する", role: .destructive) {
                                             selectedImage = nil
                                             store.photoData = nil
-                                            // 写真がなくなったら絵文字モードへ切り替え
                                             iconType = .emoji
                                         }
                                         Button("キャンセル", role: .cancel) {}
@@ -244,22 +255,26 @@ struct ProfileSettingsView: View {
                 activeHourStart = store.activeHourStart
                 activeHourEnd   = store.activeHourEnd
             }
-            .onChange(of: photoItem) { newItem in
-                Task {
-                    if let data = try? await newItem?.loadTransferable(type: Data.self),
-                       let uiImage = UIImage(data: data) {
-                        selectedImage = uiImage
-                    }
-                }
-            }
-            .onChange(of: iconType) { newType in
-                // 絵文字に切り替えたとき、選択中の新規写真をリセット
+            .onChange(of: iconType) { _, newType in
                 if newType == .emoji {
                     selectedImage = nil
                     photoItem     = nil
                 }
             }
+            .sheet(isPresented: $showCrop) {
+                if let raw = rawPickedImage {
+                    ImageCropView(image: raw) { cropped in
+                        selectedImage  = cropped
+                        rawPickedImage = nil
+                    }
+                }
+            }
             .overlay(savedToast, alignment: .bottom)
+            .alert("アップロードエラー", isPresented: .constant(!uploadErrorMessage.isEmpty)) {
+                Button("OK") { uploadErrorMessage = "" }
+            } message: {
+                Text(uploadErrorMessage)
+            }
         }
     }
 
@@ -361,9 +376,14 @@ struct ProfileSettingsView: View {
             // 写真を有効化 → 新規選択があれば保存してStorageにアップロード
             if let img = selectedImage,
                let data = img.jpegData(compressionQuality: 0.7) {
-                store.photoData = data
-                if let url = try? await store.uploadProfilePhoto(data) {
-                    store.photoURL = url
+                do {
+                    let url = try await store.uploadProfilePhoto(data)
+                    store.photoData = data
+                    store.photoURL  = url
+                } catch {
+                    isSaving = false
+                    uploadErrorMessage = "写真のアップロードに失敗しました。もう一度試してください。"
+                    return
                 }
             }
             // 写真モードに切り替えたが写真がない場合は絵文字にフォールバック

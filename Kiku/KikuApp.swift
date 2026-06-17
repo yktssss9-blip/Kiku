@@ -278,7 +278,8 @@ struct KikuApp: App {
                         fromUID:      req.fromUID,
                         fromName:     req.fromName,
                         fromEmoji:    req.fromEmoji,
-                        fromPhotoURL: req.fromPhotoURL
+                        fromPhotoURL: req.fromPhotoURL,
+                        fromUsername: req.fromUsername
                     )
                 } else {
                     await friendStore.declineFriendRequest(requestId: req.id)
@@ -291,11 +292,34 @@ struct KikuApp: App {
     // MARK: - URL スキーム処理
 
     private func handleURL(_ url: URL) {
-        guard url.scheme == "kiku" else { return }
-        switch url.host {
-        case "answer": resolveAnswerTarget(from: url)
-        case "invite": resolveInviteTarget(from: url)
-        default: break
+        if url.scheme == "kiku" {
+            switch url.host {
+            case "answer": resolveAnswerTarget(from: url)
+            case "invite": resolveInviteTarget(from: url)
+            default: break
+            }
+        } else if url.host == "shigodeki-8e49a.web.app" {
+            resolveWebInviteTarget(from: url)
+        }
+    }
+
+    private func resolveWebInviteTarget(from url: URL) {
+        let parts = url.pathComponents // ["", "q", "{questionId}"]
+        guard parts.count >= 3, parts[1] == "q",
+              let questionId = UUID(uuidString: parts[2]),
+              let token = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                  .queryItems?.first(where: { $0.name == "token" })?.value
+        else { return }
+        Task { @MainActor in
+            guard let question = await questionStore.fetchQuestionForInvite(questionId: questionId, token: token) else { return }
+            answerTarget = AnswerTarget(
+                question:       question,
+                memberId:       profileStore.myId,
+                memberName:     profileStore.name,
+                memberEmoji:    profileStore.emoji,
+                memberPhotoURL: profileStore.photoURL,
+                isInvite:       true
+            )
         }
     }
 

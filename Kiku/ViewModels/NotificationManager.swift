@@ -22,6 +22,9 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     var onFriendRequestAccept:  ((String, String, String, String, String?) -> Void)?
     var onFriendRequestDecline: ((String) -> Void)?
 
+    // 友達申請が承認されたとき（送信者側に届く通知）
+    var onFriendRequestAccepted: (() -> Void)?
+
     // チャット通知タップ → 該当チャットを開く
     var onOpenChat: ((UUID) -> Void)?
 
@@ -303,6 +306,15 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
            actionId == UNNotificationDefaultActionIdentifier {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 self.onOpenChat?(questionId)
+            }
+            return
+        }
+
+        // 友達申請承認通知タップ
+        if let type = userInfo["type"] as? String, type == "friendRequestAccepted",
+           actionId == UNNotificationDefaultActionIdentifier {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                self.onFriendRequestAccepted?()
             }
             return
         }

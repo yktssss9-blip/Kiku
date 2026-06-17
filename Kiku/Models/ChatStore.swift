@@ -129,7 +129,8 @@ class ChatStore: ObservableObject {
     /// 他ユーザーが作成した質問から開放されたチャット（Firestoreが正・ローカル永続化なし）
     @Published var receivedSessions: [ChatSession] = []
 
-    private let key = "kiku.chats.v2"
+    private let key              = "kiku.chats.v2"
+    private let receivedReadKey  = "kiku.chats.receivedReadCounts"
     private let db  = Firestore.firestore()
     private var listener: ListenerRegistration?
     private var receivedListener: ListenerRegistration?
@@ -199,6 +200,7 @@ class ChatStore: ObservableObject {
 
     private func mergeReceivedFromFirestore(_ docs: [QueryDocumentSnapshot], forUID uid: String) {
         var merged = self.receivedSessions
+        let readCounts = loadReceivedReadCounts()
         for doc in docs {
             let data = doc.data()
             // 自分が作成したチャットは sessions 側で扱うのでスキップ
@@ -211,7 +213,9 @@ class ChatStore: ObservableObject {
                 merged[idx].memberAnswers = session.memberAnswers
                 merged[idx].creatorUID    = session.creatorUID
             } else {
-                merged.append(session)
+                var newSession = session
+                newSession.lastReadMessageCount = readCounts[session.questionId.uuidString] ?? 0
+                merged.append(newSession)
             }
         }
         DispatchQueue.main.async {
@@ -418,6 +422,40 @@ class ChatStore: ObservableObject {
         db.collection("chats").document(session.questionId.uuidString).delete()
     }
 
+    func deleteReceivedSession(id: UUID) {
+        guard let session = receivedSessions.first(where: { $0.id == id }),
+              let myUID = Auth.auth().currentUser?.uid else { return }
+        receivedSessions.removeAll { $0.id == id }
+        var counts = loadReceivedReadCounts()
+        counts.removeValue(forKey: session.questionId.uuidString)
+        if let data = try? JSONEncoder().encode(counts) {
+            UserDefaults.standard.set(data, forKey: receivedReadKey)
+        }
+        db.collection("chats").document(session.questionId.uuidString)
+            .updateData(["participantUIDs": FieldValue.arrayRemove([myUID])])
+    }
+
+    func deleteMessage(messageId: UUID, sessionId: UUID) {
+        let questionId: UUID
+        let questionText: String
+
+        if let idx = sessions.firstIndex(where: { $0.id == sessionId }) {
+            sessions[idx].messages.removeAll { $0.id == messageId }
+            questionId   = sessions[idx].questionId
+            questionText = sessions[idx].questionText
+        } else if let idx = receivedSessions.firstIndex(where: { $0.id == sessionId }) {
+            receivedSessions[idx].messages.removeAll { $0.id == messageId }
+            questionId   = receivedSessions[idx].questionId
+            questionText = receivedSessions[idx].questionText
+        } else {
+            return
+        }
+
+        mutateSessionInFirestore(questionId: questionId, questionText: questionText) { session in
+            session.messages.removeAll { $0.id == messageId }
+        }
+    }
+
     func session(for questionId: UUID) -> ChatSession? {
         sessions.first { $0.questionId == questionId } ?? receivedSessions.first { $0.questionId == questionId }
     }
@@ -426,7 +464,9 @@ class ChatStore: ObservableObject {
         if let idx = sessions.firstIndex(where: { $0.id == sessionId }) {
             sessions[idx].lastReadMessageCount = sessions[idx].messages.count
         } else if let idx = receivedSessions.firstIndex(where: { $0.id == sessionId }) {
-            receivedSessions[idx].lastReadMessageCount = receivedSessions[idx].messages.count
+            let count = receivedSessions[idx].messages.count
+            receivedSessions[idx].lastReadMessageCount = count
+            saveReceivedReadCount(questionId: receivedSessions[idx].questionId, count: count)
         }
     }
 
@@ -575,6 +615,20 @@ class ChatStore: ObservableObject {
     private func save() {
         if let data = try? JSONEncoder().encode(sessions) {
             UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+
+    private func loadReceivedReadCounts() -> [String: Int] {
+        guard let data = UserDefaults.standard.data(forKey: receivedReadKey),
+              let decoded = try? JSONDecoder().decode([String: Int].self, from: data) else { return [:] }
+        return decoded
+    }
+
+    private func saveReceivedReadCount(questionId: UUID, count: Int) {
+        var counts = loadReceivedReadCounts()
+        counts[questionId.uuidString] = count
+        if let data = try? JSONEncoder().encode(counts) {
+            UserDefaults.standard.set(data, forKey: receivedReadKey)
         }
     }
 }

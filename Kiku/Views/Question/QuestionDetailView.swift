@@ -11,8 +11,7 @@ struct QuestionDetailView: View {
     @State private var reminderCount = 0
     @State private var answerToReset: Answer? = nil
     @State private var progressAnimated = false
-    @State private var showInviteCopied = false
-    @State private var showLineSent = false
+    @State private var showInviteSheet = false
     @State private var showCompletionBanner = false
     @State private var shareImage: UIImage? = nil
     @State private var showShareSheet = false
@@ -77,24 +76,12 @@ struct QuestionDetailView: View {
                 .disabled(pendingAnswers.isEmpty)
 
                 Button {
-                    copyInviteLink()
+                    showInviteSheet = true
                 } label: {
                     HStack {
-                        Image(systemName: showInviteCopied ? "checkmark.circle.fill" : "link.badge.plus")
-                            .foregroundStyle(showInviteCopied ? Color.green : Color.blue)
-                        Text(showInviteCopied ? "コピーしました！" : "招待リンクをコピー")
-                            .foregroundStyle(showInviteCopied ? Color.green : Color.primary)
-                        Spacer()
-                    }
-                }
-
-                Button {
-                    sendViaLine()
-                } label: {
-                    HStack {
-                        Image(systemName: "paperplane.fill")
-                            .foregroundStyle(Color(red: 0.04, green: 0.78, blue: 0.35))
-                        Text("LINEで送る")
+                        Image(systemName: "qrcode")
+                            .foregroundStyle(Color.blue)
+                        Text("QRコード・リンクで招待")
                         Spacer()
                     }
                 }
@@ -128,6 +115,9 @@ struct QuestionDetailView: View {
         .onReceive(NotificationCenter.default.publisher(for: .kikuQuestionCompleted)) { note in
             guard let q = note.object as? Question, q.id == question.id else { return }
             withAnimation { showCompletionBanner = true }
+        }
+        .sheet(isPresented: $showInviteSheet) {
+            QuestionShareSheet(question: currentQuestion)
         }
         .sheet(isPresented: $showShareSheet) {
             if let image = shareImage {
@@ -166,23 +156,6 @@ struct QuestionDetailView: View {
         }
     }
 
-    // MARK: - 招待リンク
-
-    private func copyInviteLink() {
-        let q = currentQuestion
-        let webURL = "https://shigodeki-8e49a.web.app/q/\(q.id.uuidString)?token=\(q.inviteToken)"
-        let message = """
-        「\(q.text)」に回答してください！
-        \(webURL)
-        """
-        UIPasteboard.general.string = message
-        withAnimation { showInviteCopied = true }
-        Task {
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            await MainActor.run { withAnimation { showInviteCopied = false } }
-        }
-    }
-
     @MainActor
     private func generateAndShare() {
         let members = currentQuestion.answers.map { answer -> MemberCardItem in
@@ -195,15 +168,6 @@ struct QuestionDetailView: View {
         guard let image = renderer.uiImage else { return }
         shareImage = image
         showShareSheet = true
-    }
-
-    private func sendViaLine() {
-        let q = currentQuestion
-        let webURL = "https://shigodeki-8e49a.web.app/q/\(q.id.uuidString)?token=\(q.inviteToken)"
-        let text = "「\(q.text)」に回答してください！\n\(webURL)"
-        guard let encoded = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "https://line.me/R/msg/text/\(encoded)") else { return }
-        UIApplication.shared.open(url)
     }
 
     // MARK: - リマインド送信

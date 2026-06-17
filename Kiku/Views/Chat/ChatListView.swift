@@ -78,28 +78,34 @@ struct ChatListView: View {
                     sessionRow(session: session)
                 }
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                    if chatStore.isOwn(session) {
-                        Button(role: .destructive) {
-                            sessionToDelete = session
-                            showDeleteAlert = true
-                        } label: {
-                            Label("削除", systemImage: "trash")
-                        }
+                    Button(role: .destructive) {
+                        sessionToDelete = session
+                        showDeleteAlert = true
+                    } label: {
+                        Label(chatStore.isOwn(session) ? "削除" : "リストから削除", systemImage: "trash")
                     }
                 }
             }
         }
         .listStyle(.plain)
-        .alert("チャットを削除しますか？", isPresented: $showDeleteAlert, presenting: sessionToDelete) { s in
+        .alert(sessionToDelete.map { chatStore.isOwn($0) ? "チャットを削除しますか？" : "リストから削除しますか？" } ?? "削除しますか？", isPresented: $showDeleteAlert, presenting: sessionToDelete) { s in
             Button("削除", role: .destructive) {
-                chatStore.deleteSession(id: s.id)
+                if chatStore.isOwn(s) {
+                    chatStore.deleteSession(id: s.id)
+                } else {
+                    chatStore.deleteReceivedSession(id: s.id)
+                }
                 sessionToDelete = nil
             }
             Button("キャンセル", role: .cancel) {
                 sessionToDelete = nil
             }
         } message: { s in
-            Text("「\(s.questionText)」のチャット履歴をすべて削除します。この操作は元に戻せません。")
+            if chatStore.isOwn(s) {
+                Text("「\(s.questionText)」のチャット履歴をすべて削除します。この操作は元に戻せません。")
+            } else {
+                Text("「\(s.questionText)」を自分のリストから削除します。他のメンバーのチャットには影響しません。")
+            }
         }
     }
 

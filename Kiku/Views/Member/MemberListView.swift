@@ -54,7 +54,6 @@ struct MemberListView: View {
                     List {
                         reportHeaderSection
                         rankingSection
-                        footerSection
                     }
                     .listStyle(.insetGrouped)
                     .navigationTitle("シゴできランキング")
@@ -134,22 +133,6 @@ struct MemberListView: View {
         .padding(.vertical, 2)
     }
 
-    // MARK: - フッター
-
-    private var footerSection: some View {
-        Section {
-            HStack {
-                Label("あなた", systemImage: "person.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text("速い ←→ 遅い")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-        }
-    }
-
     // MARK: - ヘルパー
 
     private var periodLabel: String {
@@ -183,8 +166,8 @@ private struct RankingRow: View {
             rankBadge
                 .frame(width: 36, alignment: .center)
 
-            HStack(spacing: 6) {
-                UserAvatarView(emoji: entry.friend.emoji, photoURL: entry.friend.photoURL, size: 32)
+            HStack(spacing: 8) {
+                UserAvatarView(emoji: entry.friend.emoji, photoURL: entry.friend.photoURL, size: 44)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
                         Text(entry.friend.name)
@@ -294,7 +277,7 @@ private struct FriendProfileSheet: View {
                 name:         entry.friend.name,
                 emoji:        entry.friend.emoji,
                 profileImage: nil,
-                username:     "",
+                username:     entry.friend.username,
                 rank:         entry.rank,
                 outOf:        outOf,
                 avgSpeed:     entry.avgSpeed,

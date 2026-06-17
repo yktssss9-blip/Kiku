@@ -31,6 +31,7 @@ struct Friend: Identifiable, Codable {
     var firebaseUID: String = ""   // Firestoreユーザー（空 = 旧ローカルデータ）
     var name: String
     var emoji: String
+    var username: String = ""
     var photoURL: String? = nil
     var activeHourStart: Int? = nil
     var activeHourEnd: Int?   = nil
@@ -237,6 +238,7 @@ class FriendStore: ObservableObject {
                                 firebaseUID: req.toUID,
                                 name:        req.toName,
                                 emoji:       req.toEmoji,
+                                username:    req.toUsername,
                                 photoURL:    req.toPhotoURL
                             ))
                         }
@@ -284,10 +286,10 @@ class FriendStore: ObservableObject {
         try await db.collection("friendRequests").document().setData(data)
     }
 
-    func acceptFriendRequest(requestId: String, fromUID: String, fromName: String, fromEmoji: String, fromPhotoURL: String?) async {
+    func acceptFriendRequest(requestId: String, fromUID: String, fromName: String, fromEmoji: String, fromPhotoURL: String?, fromUsername: String = "") async {
         do {
             try await db.collection("friendRequests").document(requestId).updateData(["status": "accepted"])
-            let friend = Friend(firebaseUID: fromUID, name: fromName, emoji: fromEmoji, photoURL: fromPhotoURL)
+            let friend = Friend(firebaseUID: fromUID, name: fromName, emoji: fromEmoji, username: fromUsername, photoURL: fromPhotoURL)
             await MainActor.run {
                 if !friends.contains(where: { $0.firebaseUID == fromUID }) {
                     friends.append(friend)
