@@ -9,7 +9,12 @@ service cloud.firestore {
       allow read: if true;
       allow update: if
         request.auth == null &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answers']);
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answers', 'memberNames']);
+    }
+
+    // 通報は作成のみ許可（読み取り・更新・削除は管理者のみ）
+    match /reports/{reportId} {
+      allow create: if request.auth != null;
     }
 
     // 他のコレクションは認証必須

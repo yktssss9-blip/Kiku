@@ -13,7 +13,6 @@ struct SendTabView: View {
     @State private var selectedGroup:   KikuGroup? = nil
     @State private var questionText:    String     = ""
     @State private var showTemplates:   Bool       = false
-    @State private var showAddFriend:   Bool       = false
     @State private var showStopTimeAlert:    Bool        = false
     @State private var stopTimeNames:        String      = ""
     @State private var choices:              [AnswerChoice] = [.yes, .no]
@@ -23,6 +22,8 @@ struct SendTabView: View {
     @State private var showPaywall:          Bool        = false
     @State private var searchText:           String      = ""
     @State private var isSearching:          Bool        = false
+    @State private var showShareSheet:        Bool        = false
+    @State private var shareURL:             URL?        = nil
 
     @Namespace private var selectionNamespace
 
@@ -87,10 +88,10 @@ struct SendTabView: View {
         } message: {
             Text("\(stopTimeNames) は現在 Stop Time 中のため、質問を送ることができません。")
         }
-        .sheet(isPresented: $showAddFriend) {
-            MemberAddView()
-            .environmentObject(friendStore)
-            .environmentObject(profileStore)
+        .sheet(isPresented: $showShareSheet) {
+            if let url = shareURL {
+                ShareSheet(items: [url])
+            }
         }
         .sheet(isPresented: $showTemplates) {
             if purchaseStore.isPro {
@@ -126,7 +127,7 @@ struct SendTabView: View {
                 ForEach(filteredFriends) { friend in
                     friendCircle(friend)
                 }
-                addFriendCircle
+                linkSendCircle
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 4)
@@ -230,26 +231,40 @@ struct SendTabView: View {
         .transition(.scale(scale: 0.8).combined(with: .opacity))
     }
 
-    private var addFriendCircle: some View {
-        Button { showAddFriend = true } label: {
+    private var linkSendCircle: some View {
+        let hasText = !questionText.trimmingCharacters(in: .whitespaces).isEmpty
+        return Button {
+            guard hasText else { return }
+            let question = questionStore.sendViaLink(text: questionText.trimmingCharacters(in: .whitespaces), choices: choices)
+            let urlString = "https://shigodeki-8e49a.web.app/q/\(question.id.uuidString)?token=\(question.inviteToken)"
+            shareURL = URL(string: urlString)
+            showShareSheet = true
+            questionText    = ""
+            selectedFriends = []
+            selectedGroup   = nil
+            choices         = [.yes, .no]
+            reminderSeconds = nil
+            reviewManager.onQuestionSent()
+        } label: {
             VStack(spacing: 4) {
                 ZStack {
                     Circle()
-                        .fill(Color(UIColor.quaternarySystemFill))
+                        .fill(hasText ? Color.blue.opacity(0.12) : Color(UIColor.quaternarySystemFill))
                         .frame(width: 60, height: 60)
                     Circle()
-                        .stroke(Color(UIColor.separator), lineWidth: 1)
+                        .stroke(hasText ? Color.blue.opacity(0.4) : Color(UIColor.separator), lineWidth: 1)
                         .frame(width: 60, height: 60)
-                    Image(systemName: "plus")
+                    Image(systemName: "link")
                         .font(.system(size: 20, weight: .medium))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(hasText ? Color.blue : Color(UIColor.tertiaryLabel))
                 }
-                Text("追加")
+                Text("リンク")
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(hasText ? Color.blue : Color(UIColor.tertiaryLabel))
             }
         }
         .buttonStyle(.plain)
+        .disabled(!hasText)
     }
 
     // MARK: - グループ横スクロール

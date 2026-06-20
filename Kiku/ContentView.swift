@@ -382,6 +382,16 @@ struct SettingsView: View {
                     }
                 }
 
+                // 法的情報
+                Section {
+                    Link(destination: URL(string: "https://shigodeki-8e49a.web.app/privacy.html")!) {
+                        Label("プライバシーポリシー", systemImage: "hand.raised.fill")
+                    }
+                    Link(destination: URL(string: "https://shigodeki-8e49a.web.app/terms.html")!) {
+                        Label("利用規約", systemImage: "doc.text.fill")
+                    }
+                }
+
                 // アプリ情報
                 Section("アプリ情報") {
                     LabeledContent("バージョン", value: appVersion)

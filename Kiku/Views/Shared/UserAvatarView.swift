@@ -1,21 +1,41 @@
 import SwiftUI
+import CryptoKit
 
 // MARK: - Image Cache
 
 private final class ImageCacheService {
     static let shared = ImageCacheService()
     private let cache = NSCache<NSString, UIImage>()
+    private let diskCacheURL: URL
 
     private init() {
         cache.countLimit = 100
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        diskCacheURL = caches.appendingPathComponent("avatar_cache", isDirectory: true)
+        try? FileManager.default.createDirectory(at: diskCacheURL, withIntermediateDirectories: true)
     }
 
     func image(for key: String) -> UIImage? {
-        cache.object(forKey: key as NSString)
+        if let mem = cache.object(forKey: key as NSString) { return mem }
+        let path = diskPath(for: key)
+        guard let data = try? Data(contentsOf: path),
+              let img = UIImage(data: data) else { return nil }
+        cache.setObject(img, forKey: key as NSString)
+        return img
     }
 
     func store(_ image: UIImage, for key: String) {
         cache.setObject(image, forKey: key as NSString)
+        let path = diskPath(for: key)
+        if let data = image.jpegData(compressionQuality: 0.8) {
+            try? data.write(to: path, options: .atomic)
+        }
+    }
+
+    private func diskPath(for key: String) -> URL {
+        let hash = SHA256.hash(data: Data(key.utf8))
+        let name = hash.compactMap { String(format: "%02x", $0) }.joined()
+        return diskCacheURL.appendingPathComponent(name)
     }
 }
 

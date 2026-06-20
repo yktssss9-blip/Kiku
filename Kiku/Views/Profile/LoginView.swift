@@ -3,6 +3,7 @@ import AuthenticationServices
 
 struct LoginView: View {
     @EnvironmentObject private var authStore: AuthStore
+    @State private var timeoutTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
@@ -33,17 +34,37 @@ struct LoginView: View {
                             .padding(.horizontal, 32)
                     }
 
-                    SignInWithAppleButton(.signIn) { request in
-                        authStore.prepareAppleRequest(request)
-                    } onCompletion: { result in
-                        authStore.handleAppleSignIn(result: result)
+                    if authStore.isSigningIn {
+                        ProgressView()
+                            .tint(.white)
+                            .frame(height: 52)
+                    } else {
+                        SignInWithAppleButton(.signIn) { request in
+                            authStore.isSigningIn = true
+                            authStore.errorMessage = nil
+                            authStore.prepareAppleRequest(request)
+                        } onCompletion: { result in
+                            authStore.handleAppleSignIn(result: result)
+                        }
+                        .signInWithAppleButtonStyle(.white)
+                        .frame(height: 52)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .padding(.horizontal, 32)
                     }
-                    .signInWithAppleButtonStyle(.white)
-                    .frame(height: 52)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                    .padding(.horizontal, 32)
                 }
                 .padding(.bottom, 56)
+            }
+        }
+        .onChange(of: authStore.isSigningIn) { _, signing in
+            timeoutTask?.cancel()
+            if signing {
+                timeoutTask = Task {
+                    try? await Task.sleep(for: .seconds(15))
+                    if !Task.isCancelled && authStore.isSigningIn {
+                        authStore.isSigningIn = false
+                        authStore.errorMessage = "接続がタイムアウトしました。もう一度お試しください。"
+                    }
+                }
             }
         }
     }

@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <!-- Smart App Banner: App Store ID確定後に PLACEHOLDER を実際のApp IDに差し替えること -->
   <meta name="apple-itunes-app" content="app-id=PLACEHOLDER">
   <title>きく</title>
   <style>
@@ -28,28 +27,36 @@
       text-align: left; white-space: pre-wrap; line-height: 1.6;
     }
     .label { font-size: 13px; color: #888; margin-bottom: 12px; }
-    .member-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
-    .member-btn {
+    .name-input {
       background: #1e1e1e; border: 2px solid #333; border-radius: 14px;
-      color: #f0f0f0; font-size: 16px; padding: 14px 20px; cursor: pointer;
-      transition: background 0.1s, border-color 0.1s; width: 100%;
+      color: #f0f0f0; font-size: 16px; padding: 14px 20px; width: 100%;
+      outline: none; transition: border-color 0.2s;
     }
-    .member-btn:active { background: #2a2a2a; border-color: #666; }
-    .member-btn:disabled { opacity: 0.35; cursor: default; }
+    .name-input:focus { border-color: #0a84ff; }
+    .name-input::placeholder { color: #555; }
+    .next-btn {
+      background: #0a84ff; border: none; border-radius: 14px;
+      color: #fff; font-size: 16px; font-weight: 600; padding: 14px 20px;
+      cursor: pointer; width: 100%; margin-top: 12px;
+      transition: opacity 0.2s;
+    }
+    .next-btn:active { opacity: 0.7; }
+    .next-btn:disabled { opacity: 0.35; cursor: default; }
     .answer-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .yes-btn {
-      background: #1a3a1a; border: 2px solid #2d6a2d; border-radius: 20px;
-      color: #4cd964; font-size: 22px; font-weight: 700; padding: 22px;
+    .choice-btn {
+      border: 2px solid #333; border-radius: 20px;
+      font-size: 20px; font-weight: 700; padding: 20px 12px;
       cursor: pointer; transition: background 0.1s;
+      background: #1a1a1a;
     }
-    .no-btn {
-      background: #2a1a1a; border: 2px solid #6a2d2d; border-radius: 20px;
-      color: #ff6b6b; font-size: 22px; font-weight: 700; padding: 22px;
-      cursor: pointer; transition: background 0.1s;
-    }
-    .yes-btn:active { background: #2a4a2a; }
-    .no-btn:active  { background: #3a2020; }
-    .yes-btn:disabled, .no-btn:disabled { opacity: 0.4; cursor: default; }
+    .choice-btn:active { filter: brightness(1.3); }
+    .choice-btn:disabled { opacity: 0.4; cursor: default; }
+    .choice-yes    { background: #1a3a1a; border-color: #2d6a2d; color: #4cd964; }
+    .choice-no     { background: #2a1a1a; border-color: #6a2d2d; color: #ff6b6b; }
+    .choice-time   { background: #1a2a3a; border-color: #2d4a6a; color: #5ac8fa; }
+    .choice-free   { background: #2a1a3a; border-color: #5a2d6a; color: #bf7fff; }
+    .choice-star   { background: #3a2a1a; border-color: #6a4a2d; color: #ffaa00; }
+    .choice-emoji  { background: #3a3a1a; border-color: #6a6a2d; color: #ffcc00; }
     .done-icon { font-size: 52px; margin-bottom: 16px; }
     .done-text { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
     .done-sub  { font-size: 14px; color: #888; }
@@ -60,6 +67,49 @@
       font-size: 13px; color: #888; background: #1a1a1a;
       border-radius: 10px; padding: 8px 14px; margin-bottom: 16px;
     }
+    /* モーダル */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100; padding: 24px;
+    }
+    .modal-content {
+      background: #1e1e1e; border-radius: 20px; padding: 28px 24px;
+      width: 100%; max-width: 360px; text-align: center;
+    }
+    .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 20px; }
+    .modal-sub { font-size: 13px; color: #888; margin-bottom: 16px; }
+    .modal-input {
+      background: #2a2a2a; border: 2px solid #444; border-radius: 12px;
+      color: #f0f0f0; font-size: 16px; padding: 12px 16px; width: 100%;
+      outline: none; margin-bottom: 12px;
+    }
+    .modal-input:focus { border-color: #0a84ff; }
+    .modal-submit {
+      background: #0a84ff; border: none; border-radius: 12px;
+      color: #fff; font-size: 16px; font-weight: 600; padding: 12px 20px;
+      cursor: pointer; width: 100%; margin-top: 4px;
+    }
+    .modal-submit:disabled { opacity: 0.35; }
+    .modal-cancel {
+      background: none; border: none; color: #888; font-size: 14px;
+      cursor: pointer; margin-top: 12px; padding: 8px;
+    }
+    .star-row { display: flex; justify-content: center; gap: 12px; margin: 16px 0; }
+    .star-btn {
+      font-size: 40px; background: none; border: none; cursor: pointer;
+      transition: transform 0.1s;
+    }
+    .star-btn:active { transform: scale(1.2); }
+    .emoji-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+      margin: 12px 0;
+    }
+    .emoji-btn {
+      font-size: 32px; background: #2a2a2a; border: none; border-radius: 12px;
+      padding: 10px; cursor: pointer; transition: background 0.1s;
+    }
+    .emoji-btn:active { background: #3a3a3a; }
   </style>
 </head>
 <body>
@@ -76,18 +126,16 @@
     <div class="question" id="q-text"></div>
     <div class="memo hidden" id="memo-box"></div>
     <div id="progress-member" class="progress-bar hidden"></div>
-    <div class="label">あなたは誰ですか？</div>
-    <div class="member-list" id="member-list"></div>
+    <div class="label">あなたの名前を入力してください</div>
+    <input id="name-input" type="text" class="name-input" placeholder="名前">
+    <button id="next-btn" class="next-btn" disabled>次へ</button>
   </div>
 
   <div id="screen-answer" class="hidden">
     <div class="question" id="q-text-2"></div>
     <div id="answering-for"></div>
     <div id="progress-answer" class="progress-bar hidden"></div>
-    <div class="answer-btns">
-      <button class="yes-btn" id="yes-btn">○ はい</button>
-      <button class="no-btn"  id="no-btn">✕ いいえ</button>
-    </div>
+    <div class="answer-btns" id="answer-btns"></div>
   </div>
 
   <div id="screen-done" class="hidden">
@@ -122,6 +170,46 @@
   </div>
 </div>
 
+<!-- モーダル群 -->
+<div id="modal-time" class="modal-overlay hidden">
+  <div class="modal-content">
+    <div class="modal-title">🕐 時刻で回答</div>
+    <div class="modal-sub" id="modal-time-q"></div>
+    <input id="time-input" type="time" class="modal-input" value="19:00">
+    <button id="time-submit" class="modal-submit">回答する</button>
+    <button class="modal-cancel" onclick="document.getElementById('modal-time').classList.add('hidden')">キャンセル</button>
+  </div>
+</div>
+
+<div id="modal-free" class="modal-overlay hidden">
+  <div class="modal-content">
+    <div class="modal-title">✏️ 自由記述で回答</div>
+    <div class="modal-sub" id="modal-free-q"></div>
+    <textarea id="free-input" class="modal-input" rows="3" placeholder="自由に入力してください" style="resize:none"></textarea>
+    <button id="free-submit" class="modal-submit" disabled>送信</button>
+    <button class="modal-cancel" onclick="document.getElementById('modal-free').classList.add('hidden')">キャンセル</button>
+  </div>
+</div>
+
+<div id="modal-star" class="modal-overlay hidden">
+  <div class="modal-content">
+    <div class="modal-title">⭐ 星で評価</div>
+    <div class="modal-sub" id="modal-star-q"></div>
+    <div class="star-row" id="star-row"></div>
+    <div style="font-size:12px; color:#666;">タップした星の数で評価されます</div>
+    <button class="modal-cancel" onclick="document.getElementById('modal-star').classList.add('hidden')">キャンセル</button>
+  </div>
+</div>
+
+<div id="modal-emoji" class="modal-overlay hidden">
+  <div class="modal-content">
+    <div class="modal-title">😊 絵文字で反応</div>
+    <div class="modal-sub" id="modal-emoji-q"></div>
+    <div class="emoji-grid" id="emoji-grid"></div>
+    <button class="modal-cancel" onclick="document.getElementById('modal-emoji').classList.add('hidden')">キャンセル</button>
+  </div>
+</div>
+
 <script type="module">
   import { initializeApp }
     from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js';
@@ -147,7 +235,7 @@
     document.getElementById(id).classList.remove('hidden');
   }
 
-  const pathParts = location.pathname.split('/').filter(Boolean); // ['q', '{id}']
+  const pathParts = location.pathname.split('/').filter(Boolean);
   const qid   = pathParts[1];
   const token = new URLSearchParams(location.search).get('token');
 
@@ -159,6 +247,18 @@
   let liveData     = null;
   let selectedId   = null;
   let selectedName = null;
+  let questionChoices = ['yes', 'no'];
+
+  const EMOJIS = ['😊','😍','🥰','😂','😭','😡','😮','🤔','👍','👎','🔥','❤️','💯','🎉','💪','🤯'];
+
+  const CHOICE_CONFIG = {
+    yes:      { label: '○ はい',    css: 'choice-yes'   },
+    no:       { label: '✕ いいえ',  css: 'choice-no'    },
+    time:     { label: '🕐 時刻',   css: 'choice-time'  },
+    freeText: { label: '✏️ 自由記述', css: 'choice-free'  },
+    star:     { label: '☆ 星評価',  css: 'choice-star'  },
+    emoji:    { label: '😊 絵文字', css: 'choice-emoji' },
+  };
 
   function calcProgress(data) {
     const memberNames = data.memberNames || {};
@@ -189,6 +289,98 @@
         : `✅ あなたの回答が届きました！残り ${remaining} 人の回答を待っています`;
   }
 
+  function buildAnswerButtons(choices) {
+    const container = document.getElementById('answer-btns');
+    container.innerHTML = '';
+    for (const c of choices) {
+      const cfg = CHOICE_CONFIG[c];
+      if (!cfg) continue;
+      const btn = document.createElement('button');
+      btn.className = `choice-btn ${cfg.css}`;
+      btn.textContent = cfg.label;
+      btn.addEventListener('click', () => handleChoice(c));
+      container.appendChild(btn);
+    }
+  }
+
+  function handleChoice(choice) {
+    const qText = liveData?.text || '';
+    switch (choice) {
+      case 'yes':  submit('yes');  break;
+      case 'no':   submit('no');   break;
+      case 'time':
+        document.getElementById('modal-time-q').textContent = qText;
+        document.getElementById('modal-time').classList.remove('hidden');
+        break;
+      case 'freeText':
+        document.getElementById('modal-free-q').textContent = qText;
+        document.getElementById('free-input').value = '';
+        document.getElementById('free-submit').disabled = true;
+        document.getElementById('modal-free').classList.remove('hidden');
+        break;
+      case 'star':
+        document.getElementById('modal-star-q').textContent = qText;
+        buildStarPicker();
+        document.getElementById('modal-star').classList.remove('hidden');
+        break;
+      case 'emoji':
+        document.getElementById('modal-emoji-q').textContent = qText;
+        buildEmojiPicker();
+        document.getElementById('modal-emoji').classList.remove('hidden');
+        break;
+    }
+  }
+
+  function buildStarPicker() {
+    const row = document.getElementById('star-row');
+    row.innerHTML = '';
+    for (let i = 1; i <= 5; i++) {
+      const btn = document.createElement('button');
+      btn.className = 'star-btn';
+      btn.textContent = '★';
+      btn.addEventListener('click', () => {
+        document.getElementById('modal-star').classList.add('hidden');
+        submit(`star:${i}`);
+      });
+      row.appendChild(btn);
+    }
+  }
+
+  function buildEmojiPicker() {
+    const grid = document.getElementById('emoji-grid');
+    grid.innerHTML = '';
+    for (const em of EMOJIS) {
+      const btn = document.createElement('button');
+      btn.className = 'emoji-btn';
+      btn.textContent = em;
+      btn.addEventListener('click', () => {
+        document.getElementById('modal-emoji').classList.add('hidden');
+        submit(`emoji:${em}`);
+      });
+      grid.appendChild(btn);
+    }
+  }
+
+  // 時刻モーダル
+  document.getElementById('time-submit').addEventListener('click', () => {
+    const val = document.getElementById('time-input').value;
+    if (!val) return;
+    document.getElementById('modal-time').classList.add('hidden');
+    submit(val);
+  });
+
+  // 自由記述モーダル
+  const freeInput = document.getElementById('free-input');
+  freeInput.addEventListener('input', () => {
+    document.getElementById('free-submit').disabled = !freeInput.value.trim();
+  });
+  document.getElementById('free-submit').addEventListener('click', () => {
+    const text = freeInput.value.trim();
+    if (!text) return;
+    document.getElementById('modal-free').classList.add('hidden');
+    submit(`yes:${text}`);
+  });
+
   onSnapshot(ref, (snap) => {
     if (!snap.exists() || snap.data().inviteToken !== token) {
       if (!initialized) show('screen-error');
@@ -200,9 +392,7 @@
 
     if (!initialized) {
       initialized = true;
-
-      const memberNames = liveData.memberNames || {};
-      const answers     = liveData.answers     || {};
+      questionChoices = liveData.choices || ['yes', 'no'];
 
       document.getElementById('q-text').textContent   = liveData.text;
       document.getElementById('q-text-2').textContent = liveData.text;
@@ -213,35 +403,27 @@
         box.classList.remove('hidden');
       }
 
-      const list    = document.getElementById('member-list');
-      const entries = Object.entries(memberNames);
+      buildAnswerButtons(questionChoices);
 
-      if (entries.length === 0) {
-        // memberNames が未保存の場合: テキスト入力フォールバック
-        list.innerHTML = `
-          <input id="name-input" type="text" placeholder="あなたの名前"
-            style="background:#1e1e1e;border:2px solid #333;border-radius:14px;
-                   color:#f0f0f0;font-size:16px;padding:14px 20px;width:100%;outline:none;">
-          <button class="member-btn" onclick="
-            const n = document.getElementById('name-input').value.trim();
-            if (!n) return;
-            window._selectMember('web-' + crypto.randomUUID(), n);
-          ">次へ →</button>`;
-      } else {
-        for (const [uuid, name] of entries) {
-          const btn = document.createElement('button');
-          btn.className = 'member-btn';
-          const answered = answers[uuid]?.value && answers[uuid].value !== 'pending';
-          if (answered) {
-            btn.textContent = name + '（回答済み）';
-            btn.disabled = true;
-          } else {
-            btn.textContent = name;
-            btn.onclick = () => window._selectMember(uuid, name);
-          }
-          list.appendChild(btn);
+      const nameInput = document.getElementById('name-input');
+      const nextBtn   = document.getElementById('next-btn');
+
+      nameInput.addEventListener('input', () => {
+        nextBtn.disabled = !nameInput.value.trim();
+      });
+
+      nextBtn.addEventListener('click', () => {
+        const name = nameInput.value.trim();
+        if (!name) return;
+        window._selectMember(crypto.randomUUID(), name);
+      });
+
+      nameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && nameInput.value.trim()) {
+          window._selectMember(crypto.randomUUID(), nameInput.value.trim());
         }
-      }
+      });
+
       show('screen-member');
     }
   }, () => {
@@ -255,20 +437,29 @@
     show('screen-answer');
   };
 
+  function doneLabel(value) {
+    if (value === 'yes')  return { icon: '✅', text: '「はい」と回答しました' };
+    if (value === 'no')   return { icon: '❌', text: '「いいえ」と回答しました' };
+    if (value.match(/^\d{1,2}:\d{2}$/)) return { icon: '🕐', text: `「${value}」と回答しました` };
+    if (value.startsWith('yes:'))  return { icon: '✏️', text: '自由記述で回答しました' };
+    if (value.startsWith('star:')) return { icon: '⭐', text: `星${value.slice(5)}つで評価しました` };
+    if (value.startsWith('emoji:')) return { icon: value.slice(6), text: '絵文字で回答しました' };
+    return { icon: '✅', text: '回答しました' };
+  }
+
   async function submit(value) {
-    document.getElementById('yes-btn').disabled = true;
-    document.getElementById('no-btn').disabled  = true;
+    document.querySelectorAll('.choice-btn').forEach(b => b.disabled = true);
     try {
       await updateDoc(ref, {
         [`answers.${selectedId}.value`]:      value,
-        [`answers.${selectedId}.answeredAt`]: Timestamp.now()
+        [`answers.${selectedId}.answeredAt`]: Timestamp.now(),
+        [`memberNames.${selectedId}`]:        selectedName
       });
-      document.getElementById('done-icon').textContent =
-        value === 'yes' ? '✅' : '❌';
-      document.getElementById('done-text').textContent =
-        (value === 'yes' ? '「はい」' : '「いいえ」') + ' と回答しました';
 
-      // onSnapshot が届くまでの暫定進捗表示（自分の回答を +1 してカウント）
+      const d = doneLabel(value);
+      document.getElementById('done-icon').textContent = d.icon;
+      document.getElementById('done-text').textContent = d.text;
+
       if (liveData) {
         const { answered, total } = calcProgress(liveData);
         const remaining = total - (answered + 1);
@@ -279,20 +470,14 @@
       }
 
       show('screen-done');
-      // iOS デバイスのみバナーを表示
       if (/iPhone|iPad/.test(navigator.userAgent)) {
         document.getElementById('app-banner').classList.remove('hidden');
-        // App Store ID確定後: document.getElementById('app-store-link').href = 'https://apps.apple.com/jp/app/id{YOUR_ID}';
       }
     } catch {
       alert('送信に失敗しました。もう一度お試しください。');
-      document.getElementById('yes-btn').disabled = false;
-      document.getElementById('no-btn').disabled  = false;
+      document.querySelectorAll('.choice-btn').forEach(b => b.disabled = false);
     }
   }
-
-  document.getElementById('yes-btn').onclick = () => submit('yes');
-  document.getElementById('no-btn').onclick  = () => submit('no');
 </script>
 </body>
 </html>

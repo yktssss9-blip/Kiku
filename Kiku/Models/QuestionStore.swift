@@ -51,9 +51,11 @@ struct Question: Identifiable, Codable {
     var memo: String?
     /// 質問の作成者UID（受信質問のチャット解放先を判定するために必要。自分が送った質問では常に自分のUID）
     var createdBy: String?
+    /// Firestore の memberNames マップ（memberId → 表示名）。招待リンク経由の回答者名を保持
+    var memberNames: [UUID: String] = [:]
 
     enum CodingKeys: String, CodingKey {
-        case id, text, groupId, answers, createdAt, choices, inviteToken, memo, createdBy
+        case id, text, groupId, answers, createdAt, choices, inviteToken, memo, createdBy, memberNames
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -66,13 +68,20 @@ struct Question: Identifiable, Codable {
         inviteToken = try c.decodeIfPresent(String.self,  forKey: .inviteToken) ?? UUID().uuidString
         memo        = try c.decodeIfPresent(String.self,  forKey: .memo)
         createdBy   = try c.decodeIfPresent(String.self,  forKey: .createdBy)
+        if let raw  = try c.decodeIfPresent([String: String].self, forKey: .memberNames) {
+            memberNames = raw.reduce(into: [:]) { dict, pair in
+                if let uuid = UUID(uuidString: pair.key) { dict[uuid] = pair.value }
+            }
+        }
     }
     init(id: UUID = UUID(), text: String, groupId: UUID? = nil,
          answers: [Answer], createdAt: Date = Date(), choices: [String] = ["yes", "no"],
-         inviteToken: String = UUID().uuidString, memo: String? = nil, createdBy: String? = nil) {
+         inviteToken: String = UUID().uuidString, memo: String? = nil, createdBy: String? = nil,
+         memberNames: [UUID: String] = [:]) {
         self.id = id; self.text = text; self.groupId = groupId
         self.answers = answers; self.createdAt = createdAt; self.choices = choices
         self.inviteToken = inviteToken; self.memo = memo; self.createdBy = createdBy
+        self.memberNames = memberNames
     }
 
     var answerChoices: [AnswerChoice] {
@@ -104,6 +113,9 @@ class QuestionStore: ObservableObject {
 
     /// 他ユーザーから届いた質問（Firestoreが正・ローカル永続化なし）
     @Published var receivedQuestions: [Question] = []
+
+    /// 受信質問ごとの自分の memberId（questionId → memberId）
+    @Published var receivedMemberMap: [UUID: UUID] = [:]
 
     private let key = "kiku.questions"
     private let db  = Firestore.firestore()
@@ -158,6 +170,7 @@ class QuestionStore: ObservableObject {
 
     private func mergeReceivedFromFirestore(_ snapshot: QuerySnapshot, forUID uid: String) {
         var merged = self.receivedQuestions
+        var memberMap = self.receivedMemberMap
         var newlyDetected: [(Question, UUID)] = []
         let isInitial = isInitialReceivedLoad
         isInitialReceivedLoad = false
@@ -173,6 +186,12 @@ class QuestionStore: ObservableObject {
                 merged.append(q)
             }
 
+            if let recipientMap = data["recipientMemberMap"] as? [String: String],
+               let memberIdStr = recipientMap[uid],
+               let memberId = UUID(uuidString: memberIdStr) {
+                memberMap[q.id] = memberId
+            }
+
             guard change.type == .added else { continue }
             if isInitial {
                 detectedReceivedIds.insert(q.id)
@@ -180,8 +199,8 @@ class QuestionStore: ObservableObject {
             }
             guard !detectedReceivedIds.contains(q.id),
                   data["createdBy"] as? String != uid,
-                  let memberMap  = data["recipientMemberMap"] as? [String: String],
-                  let memberIdStr = memberMap[uid],
+                  let recipientMap = data["recipientMemberMap"] as? [String: String],
+                  let memberIdStr = recipientMap[uid],
                   let memberId = UUID(uuidString: memberIdStr)
             else { continue }
             detectedReceivedIds.insert(q.id)
@@ -189,6 +208,7 @@ class QuestionStore: ObservableObject {
         }
 
         DispatchQueue.main.async {
+            self.receivedMemberMap = memberMap
             self.receivedQuestions = merged
             for (q, memberId) in newlyDetected {
                 self.onReceivedQuestion?(q, memberId)
@@ -217,6 +237,7 @@ class QuestionStore: ObservableObject {
                         merged[idx].answers.append(fsAnswer)
                     }
                 }
+                merged[idx].memberNames.merge(q.memberNames) { _, new in new }
             } else {
                 merged.append(q)
             }
@@ -290,6 +311,17 @@ class QuestionStore: ObservableObject {
         questions.append(question)
         saveQuestionToFirestore(question, friends: friends)
         NotificationManager.playOutgoingSound()
+    }
+
+    /// 招待リンク専用で質問を作成（メンバーなし）。作成した Question を返す
+    func sendViaLink(text: String, choices: [AnswerChoice] = [.yes, .no]) -> Question {
+        let question = Question(text: text, groupId: nil, answers: [],
+                                choices: choices.map(\.rawValue),
+                                createdBy: Auth.auth().currentUser?.uid)
+        questions.append(question)
+        saveQuestionToFirestore(question, friends: [])
+        NotificationManager.playOutgoingSound()
+        return question
     }
 
     // MARK: - 回答処理
@@ -555,9 +587,16 @@ class QuestionStore: ObservableObject {
             return Answer(memberId: memberId, value: value, answeredAt: answeredAt, hasBeenEdited: hasBeenEdited)
         }
 
+        var memberNames: [UUID: String] = [:]
+        if let rawNames = data["memberNames"] as? [String: String] {
+            for (key, name) in rawNames {
+                if let uuid = UUID(uuidString: key) { memberNames[uuid] = name }
+            }
+        }
+
         return Question(id: id, text: text, groupId: groupId, answers: answers,
                         createdAt: createdAt, choices: choices, inviteToken: inviteToken, memo: memo,
-                        createdBy: createdBy)
+                        createdBy: createdBy, memberNames: memberNames)
     }
 
     private func questionFromFirestore(_ doc: QueryDocumentSnapshot) -> Question? {

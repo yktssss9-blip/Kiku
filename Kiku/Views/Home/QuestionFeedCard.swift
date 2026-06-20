@@ -107,7 +107,7 @@ struct QuestionFeedCard: View {
     @ViewBuilder
     private func memberRow(answer: Answer) -> some View {
         let friend    = friends.first { $0.id == answer.memberId }
-        let name      = friend?.name ?? "不明"
+        let name      = friend?.name ?? currentQuestion.memberNames[answer.memberId] ?? "不明"
         let isPending = answer.value == "pending"
 
         HStack(spacing: 10) {

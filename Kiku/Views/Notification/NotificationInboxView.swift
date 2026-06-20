@@ -104,6 +104,7 @@ struct PendingNotifCard: View {
     @State private var showFreeText    = false
     @State private var showStarPicker  = false
     @State private var showEmojiPicker = false
+    @State private var showReportSheet = false
     @State private var timeDate        = Date()
     @State private var freeTextInput   = ""
 
@@ -134,6 +135,13 @@ struct PendingNotifCard: View {
                 .fontWeight(.semibold)
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
+                .contextMenu {
+                    Button(role: .destructive) {
+                        showReportSheet = true
+                    } label: {
+                        Label("通報する", systemImage: "exclamationmark.bubble")
+                    }
+                }
 
             // ── 回答ボタン（answerChoices から動的生成） ──
             LazyVGrid(
@@ -309,6 +317,13 @@ struct PendingNotifCard: View {
                 }
             }
             .presentationDetents([.medium])
+        }
+        .sheet(isPresented: $showReportSheet) {
+            ReportSheet(
+                contentType: "question",
+                contentId: item.questionId.uuidString,
+                contentText: item.questionText
+            )
         }
     }
 

@@ -120,10 +120,14 @@ class FriendStore: ObservableObject {
         let uids = friends.compactMap { $0.firebaseUID.isEmpty ? nil : $0.firebaseUID }
         guard !uids.isEmpty else { return }
         var activeSet: Set<String> = []
-        for uid in uids {
-            if let doc = try? await db.collection("users").document(uid).getDocument(),
-               let active = doc.data()?["stopTimeActive"] as? Bool, active {
-                activeSet.insert(uid)
+        for chunk in stride(from: 0, to: uids.count, by: 30).map({ Array(uids[$0..<min($0+30, uids.count)]) }) {
+            if let snapshot = try? await db.collection("users")
+                .whereField(FieldPath.documentID(), in: chunk).getDocuments() {
+                for doc in snapshot.documents {
+                    if doc.data()["stopTimeActive"] as? Bool == true {
+                        activeSet.insert(doc.documentID)
+                    }
+                }
             }
         }
         await MainActor.run { stopTimeActiveUIDs = activeSet }
@@ -139,10 +143,14 @@ class FriendStore: ObservableObject {
         let uids = friends.compactMap { $0.firebaseUID.isEmpty ? nil : $0.firebaseUID }
         guard !uids.isEmpty else { return }
         var proSet: Set<String> = []
-        for uid in uids {
-            if let doc = try? await db.collection("users").document(uid).getDocument(),
-               let isPro = doc.data()?["isPro"] as? Bool, isPro {
-                proSet.insert(uid)
+        for chunk in stride(from: 0, to: uids.count, by: 30).map({ Array(uids[$0..<min($0+30, uids.count)]) }) {
+            if let snapshot = try? await db.collection("users")
+                .whereField(FieldPath.documentID(), in: chunk).getDocuments() {
+                for doc in snapshot.documents {
+                    if doc.data()["isPro"] as? Bool == true {
+                        proSet.insert(doc.documentID)
+                    }
+                }
             }
         }
         await MainActor.run { proUIDs = proSet }
@@ -154,14 +162,17 @@ class FriendStore: ObservableObject {
         let uids = friends.compactMap { $0.firebaseUID.isEmpty ? nil : $0.firebaseUID }
         guard !uids.isEmpty else { return }
         var updates: [(UUID, String, String, String?)] = []
-        for uid in uids {
-            guard let idx = friends.firstIndex(where: { $0.firebaseUID == uid }),
-                  let doc  = try? await db.collection("users").document(uid).getDocument(),
-                  let data = doc.data() else { continue }
-            let name     = data["name"]     as? String ?? friends[idx].name
-            let emoji    = data["emoji"]    as? String ?? friends[idx].emoji
-            let photoURL = data["photoURL"] as? String
-            updates.append((friends[idx].id, name, emoji, photoURL))
+        for chunk in stride(from: 0, to: uids.count, by: 30).map({ Array(uids[$0..<min($0+30, uids.count)]) }) {
+            guard let snapshot = try? await db.collection("users")
+                .whereField(FieldPath.documentID(), in: chunk).getDocuments() else { continue }
+            for doc in snapshot.documents {
+                let data = doc.data()
+                guard let idx = friends.firstIndex(where: { $0.firebaseUID == doc.documentID }) else { continue }
+                let name     = data["name"]     as? String ?? friends[idx].name
+                let emoji    = data["emoji"]    as? String ?? friends[idx].emoji
+                let photoURL = data["photoURL"] as? String
+                updates.append((friends[idx].id, name, emoji, photoURL))
+            }
         }
         await MainActor.run {
             for (id, name, emoji, photoURL) in updates {

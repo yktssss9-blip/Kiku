@@ -267,7 +267,7 @@ struct QuestionDetailView: View {
         return HStack(alignment: starComment != nil ? .top : .center) {
             UserAvatarView(emoji: friend?.emoji ?? "👤", photoURL: friend?.photoURL, size: 36)
             VStack(alignment: .leading, spacing: 2) {
-                Text(friend?.name ?? "不明").font(.body)
+                Text(friend?.name ?? currentQuestion.memberNames[answer.memberId] ?? "不明").font(.body)
                 if let comment = starComment {
                     Text(comment)
                         .font(.caption)

@@ -7,6 +7,7 @@ import CryptoKit
 class AuthStore: ObservableObject {
     @Published var user: User? = nil
     @Published var isLoading = true
+    @Published var isSigningIn = false
     @Published var errorMessage: String? = nil
     @Published var appleDisplayName: String = ""
 
@@ -47,6 +48,7 @@ class AuthStore: ObservableObject {
                 let idToken = String(data: idTokenData, encoding: .utf8)
             else {
                 errorMessage = "認証情報の取得に失敗しました"
+                isSigningIn = false
                 return
             }
             let firebaseCredential = OAuthProvider.appleCredential(
@@ -64,10 +66,12 @@ class AuthStore: ObservableObject {
             if code != ASAuthorizationError.canceled.rawValue {
                 errorMessage = "サインインに失敗しました"
             }
+            isSigningIn = false
         }
     }
 
     private func signInOrLink(with credential: AuthCredential) async {
+        defer { isSigningIn = false }
         do {
             if let current = Auth.auth().currentUser, current.isAnonymous {
                 try await current.link(with: credential)
@@ -78,7 +82,12 @@ class AuthStore: ObservableObject {
         } catch let err as NSError {
             if err.code == AuthErrorCode.credentialAlreadyInUse.rawValue,
                let updated = err.userInfo[AuthErrorUserInfoUpdatedCredentialKey] as? AuthCredential {
-                try? await Auth.auth().signIn(with: updated)
+                do {
+                    try await Auth.auth().signIn(with: updated)
+                    errorMessage = nil
+                } catch {
+                    errorMessage = "サインインに失敗しました"
+                }
             } else {
                 errorMessage = "サインインに失敗しました"
             }

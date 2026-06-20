@@ -16,6 +16,7 @@ struct ChatView: View {
     @State private var alertMessage = ""
     @State private var showAlert = false
     @State private var eventStore = EKEventStore()
+    @State private var reportMessage: ChatMessage? = nil
 
     private let reactionEmojis = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
 
@@ -87,6 +88,13 @@ struct ChatView: View {
         } message: {
             Text(alertMessage)
         }
+        .sheet(item: $reportMessage) { message in
+            ReportSheet(
+                contentType: "chatMessage",
+                contentId: message.id.uuidString,
+                contentText: message.text
+            )
+        }
     }
 
     // MARK: - コンテキストメニュー
@@ -133,6 +141,13 @@ struct ChatView: View {
                 chatStore.deleteMessage(messageId: message.id, sessionId: session.id)
             } label: {
                 Label("削除", systemImage: "trash")
+            }
+        } else {
+            Divider()
+            Button(role: .destructive) {
+                reportMessage = message
+            } label: {
+                Label("通報する", systemImage: "exclamationmark.bubble")
             }
         }
     }

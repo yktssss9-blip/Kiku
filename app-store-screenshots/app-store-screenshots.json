@@ -1,0 +1,231 @@
+{
+  "schemaVersion": 2,
+  "appName": "きく",
+  "themeId": "kiku-dark-vivid",
+  "connectedCanvas": true,
+  "locales": [
+    "ja"
+  ],
+  "locale": "ja",
+  "device": "iphone",
+  "orientation": "portrait",
+  "appIcon": "/app-icon.png",
+  "slidesByDevice": {
+    "iphone": [
+      {
+        "id": "kiku_hero",
+        "layout": "device-bottom",
+        "label": {
+          "ja": "きく"
+        },
+        "headline": {
+          "ja": "質問を送って\n即レスをもらおう"
+        },
+        "screenshot": "/screenshots/uploaded/9f04b51e3c233a2a.png",
+        "transforms": {
+          "device": {
+            "x": 136.13367609254493,
+            "y": 693.2673521850904,
+            "width": 977,
+            "height": 1991,
+            "rotation": 0,
+            "zIndex": 3
+          },
+          "caption": {
+            "x": 105.60000000000001,
+            "y": 229.44,
+            "width": 1108.8,
+            "height": 803.0400000000001,
+            "rotation": 0,
+            "zIndex": 4
+          }
+        }
+      },
+      {
+        "id": "kiku_live_activity",
+        "layout": "two-devices",
+        "label": {
+          "ja": "LIVE ACTIVITY"
+        },
+        "headline": {
+          "ja": "ロック画面から\nそのまま回答"
+        },
+        "screenshot": "/screenshots/uploaded/0fb98b1b9867abd4.png",
+        "screenshotSecondary": "/screenshots/uploaded/cfcdc177dfaac3e3.png",
+        "transforms": {
+          "deviceSecondary": {
+            "x": 721.1773778920306,
+            "y": 875.8586118251932,
+            "width": 871,
+            "height": 1774,
+            "rotation": 9,
+            "zIndex": 1
+          },
+          "caption": {
+            "x": 112,
+            "y": 87,
+            "width": 1108,
+            "height": 803,
+            "rotation": 0,
+            "zIndex": 3
+          },
+          "device": {
+            "x": 2.3470437017986114,
+            "y": 791.6041131105401,
+            "width": 912,
+            "height": 1858,
+            "rotation": -26,
+            "zIndex": 2
+          }
+        },
+        "textElements": []
+      },
+      {
+        "id": "kiku_send",
+        "layout": "device-top",
+        "label": {
+          "ja": "SEND"
+        },
+        "headline": {
+          "ja": "友達を選んで\nワンタップで送信"
+        },
+        "screenshot": "",
+        "inverted": true,
+        "transforms": {
+          "device": {
+            "x": 195.4164524421467,
+            "y": 412.3984575835476,
+            "width": 1013,
+            "height": 2064,
+            "rotation": 0,
+            "zIndex": 1
+          },
+          "caption": {
+            "x": 105.59987618460946,
+            "y": 2487.199988912372,
+            "width": 1109,
+            "height": 324,
+            "rotation": 0,
+            "zIndex": 2
+          }
+        },
+        "textElements": []
+      },
+      {
+        "id": "kiku_feed",
+        "layout": "device-bottom",
+        "label": {
+          "ja": "FEED"
+        },
+        "headline": {
+          "ja": "回答速度で\nランキング競争"
+        },
+        "screenshot": "/screenshots/apple/iphone/ja/02-feed.png",
+        "transforms": {
+          "device": {
+            "x": 2878.7969151670995,
+            "y": 626.9125964010285,
+            "width": 977,
+            "height": 1991,
+            "rotation": 0,
+            "zIndex": 3
+          }
+        }
+      },
+      {
+        "id": "kiku_ranking",
+        "layout": "device-top",
+        "label": {
+          "ja": "RANKING"
+        },
+        "headline": {
+          "ja": "\n"
+        },
+        "screenshot": "/screenshots/apple/iphone/ja/01-ranking.png",
+        "inverted": true,
+        "transforms": {
+          "device": {
+            "x": -1168.5424164524438,
+            "y": 677.8174807197954,
+            "width": 1013,
+            "height": 2064,
+            "rotation": 0,
+            "zIndex": 3
+          },
+          "caption": {
+            "x": -41.40002902787819,
+            "y": 290.2000080231011,
+            "width": 1403,
+            "height": 478,
+            "rotation": 0,
+            "zIndex": 4
+          }
+        }
+      },
+      {
+        "id": "kiku_more",
+        "layout": "no-device",
+        "label": {
+          "ja": "MORE"
+        },
+        "headline": {
+          "ja": "フィードで\n回答状況を確認"
+        },
+        "screenshot": "",
+        "transforms": {
+          "caption": {
+            "x": 120.25438481451238,
+            "y": 238.14136520744134,
+            "width": 1111,
+            "height": 469,
+            "rotation": 0,
+            "zIndex": 4
+          }
+        }
+      },
+      {
+        "id": "s_mqix9whf_i",
+        "layout": "device-bottom",
+        "label": {
+          "en": "NEW"
+        },
+        "headline": {
+          "en": "Edit this\nheadline."
+        },
+        "screenshot": "",
+        "transforms": {
+          "device": {
+            "x": 155.1823977238455,
+            "y": 749.6799754505876,
+            "width": 1003,
+            "height": 2043,
+            "rotation": -1,
+            "zIndex": 2
+          },
+          "caption": {
+            "x": 79.79537275064467,
+            "y": 207.32174807197947,
+            "width": 1108.8,
+            "height": 803.04,
+            "rotation": 0,
+            "zIndex": 1
+          }
+        },
+        "textElements": []
+      }
+    ],
+    "android": [],
+    "ipad": [],
+    "android-7": [],
+    "android-10": [],
+    "feature-graphic": []
+  },
+  "crossScreenMockupsByDevice": {
+    "iphone": [],
+    "ipad": [],
+    "android": [],
+    "android-7": [],
+    "android-10": [],
+    "feature-graphic": []
+  }
+}

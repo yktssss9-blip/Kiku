@@ -34,10 +34,6 @@ struct MemberListView: View {
         }
     }
 
-    private var maxSpeed: Double {
-        let speeds = rankedEntries.compactMap(\.avgSpeed)
-        return max(speeds.max() ?? 60, 60)
-    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -106,7 +102,7 @@ struct MemberListView: View {
         Section {
             columnHeader
             ForEach(rankedEntries) { entry in
-                RankingRow(entry: entry, maxSpeed: maxSpeed,
+                RankingRow(entry: entry,
                            title: pointStore.title(rank: entry.rank,
                                                    outOf: rankedEntries.count,
                                                    isPro: entry.isMe ? purchaseStore.isPro : friendStore.isPro(entry.friend)))
@@ -127,7 +123,7 @@ struct MemberListView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, 8)
             Text("平均速度")
-                .frame(width: 120, alignment: .leading)
+                .frame(alignment: .trailing)
         }
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -159,7 +155,6 @@ private struct RankedEntry: Identifiable {
 
 private struct RankingRow: View {
     let entry:    RankedEntry
-    let maxSpeed: Double
     let title:    PointTitle
 
     var body: some View {
@@ -189,35 +184,17 @@ private struct RankingRow: View {
             .padding(.leading, 8)
 
             speedBar
-                .frame(width: 120)
         }
         .padding(.vertical, 4)
         .listRowBackground(entry.isMe ? Color.blue.opacity(0.06) : Color.clear)
     }
 
     private var speedBar: some View {
-        HStack(spacing: 6) {
-            GeometryReader { geo in
-                let ratio  = entry.avgSpeed.map { min($0 / maxSpeed, 1.0) } ?? 1.0
-                let filled = geo.size.width * ratio
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color(UIColor.systemFill))
-                        .frame(height: 8)
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(barColor)
-                        .frame(width: max(filled, 6), height: 8)
-                }
-                .frame(maxHeight: .infinity, alignment: .center)
-            }
-            .frame(height: 20)
-
-            Text(speedLabel)
-                .font(.caption2)
-                .fontWeight(.semibold)
-                .foregroundStyle(barColor)
-                .frame(width: 34, alignment: .trailing)
-        }
+        Text(speedLabel)
+            .font(.callout)
+            .fontWeight(.bold)
+            .foregroundStyle(barColor)
+            .frame(alignment: .trailing)
     }
 
     private var rankBadge: some View {
