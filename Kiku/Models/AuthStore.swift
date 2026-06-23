@@ -4,7 +4,7 @@ import FirebaseFirestore
 import AuthenticationServices
 import CryptoKit
 
-class AuthStore: ObservableObject {
+class AuthStore: NSObject, ObservableObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
     @Published var user: User? = nil
     @Published var isLoading = true
     @Published var isSigningIn = false
@@ -13,8 +13,10 @@ class AuthStore: ObservableObject {
 
     private var handle: AuthStateDidChangeListenerHandle?
     private var currentNonce: String?
+    private var authController: ASAuthorizationController?
 
-    init() {
+    override init() {
+        super.init()
         handle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
             DispatchQueue.main.async {
                 self?.user = user
@@ -31,65 +33,90 @@ class AuthStore: ObservableObject {
 
     // MARK: - Apple Sign In
 
-    func prepareAppleRequest(_ request: ASAuthorizationAppleIDRequest) {
+    func startAppleSignIn() {
         let nonce = randomNonceString()
         currentNonce = nonce
+        let request = ASAuthorizationAppleIDProvider().createRequest()
         request.requestedScopes = [.fullName, .email]
         request.nonce = sha256(nonce)
+
+        let controller = ASAuthorizationController(authorizationRequests: [request])
+        controller.delegate = self
+        controller.presentationContextProvider = self
+        authController = controller
+        controller.performRequests()
+
+        isSigningIn = true
+        errorMessage = nil
     }
 
-    func handleAppleSignIn(result: Result<ASAuthorization, Error>) {
-        switch result {
-        case .success(let auth):
-            guard
-                let credential = auth.credential as? ASAuthorizationAppleIDCredential,
-                let nonce = currentNonce,
-                let idTokenData = credential.identityToken,
-                let idToken = String(data: idTokenData, encoding: .utf8)
-            else {
-                errorMessage = "認証情報の取得に失敗しました"
-                isSigningIn = false
-                return
-            }
-            let firebaseCredential = OAuthProvider.appleCredential(
-                withIDToken: idToken,
-                rawNonce: nonce,
-                fullName: credential.fullName
-            )
-            let parts = [credential.fullName?.givenName, credential.fullName?.familyName]
-                .compactMap { $0 }.filter { !$0.isEmpty }
-            if !parts.isEmpty { appleDisplayName = parts.joined(separator: " ") }
-            Task { @MainActor in await signInOrLink(with: firebaseCredential) }
-
-        case .failure(let error):
-            let code = (error as NSError).code
-            if code != ASAuthorizationError.canceled.rawValue {
-                errorMessage = "サインインに失敗しました"
-            }
-            isSigningIn = false
+    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = scene.windows.first else {
+            return UIWindow()
         }
+        return window
     }
 
-    private func signInOrLink(with credential: AuthCredential) async {
-        defer { isSigningIn = false }
-        do {
-            if let current = Auth.auth().currentUser, current.isAnonymous {
-                try await current.link(with: credential)
-            } else {
-                try await Auth.auth().signIn(with: credential)
-            }
-            errorMessage = nil
-        } catch let err as NSError {
-            if err.code == AuthErrorCode.credentialAlreadyInUse.rawValue,
-               let updated = err.userInfo[AuthErrorUserInfoUpdatedCredentialKey] as? AuthCredential {
-                do {
-                    try await Auth.auth().signIn(with: updated)
-                    errorMessage = nil
-                } catch {
-                    errorMessage = "サインインに失敗しました"
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
+        guard
+            let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+            let nonce = currentNonce,
+            let idTokenData = credential.identityToken,
+            let idToken = String(data: idTokenData, encoding: .utf8)
+        else {
+            errorMessage = "認証情報の取得に失敗しました"
+            isSigningIn = false
+            return
+        }
+        let firebaseCredential = OAuthProvider.credential(
+            providerID: .apple,
+            idToken: idToken,
+            rawNonce: nonce
+        )
+        let parts = [credential.fullName?.givenName, credential.fullName?.familyName]
+            .compactMap { $0 }.filter { !$0.isEmpty }
+        if !parts.isEmpty { appleDisplayName = parts.joined(separator: " ") }
+        signInOrLink(with: firebaseCredential)
+    }
+
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+        let code = (error as NSError).code
+        if code != ASAuthorizationError.canceled.rawValue {
+            errorMessage = "サインインに失敗しました: \(error.localizedDescription)"
+        }
+        isSigningIn = false
+    }
+
+    private func signInOrLink(with credential: AuthCredential) {
+        print("[Kiku Auth] signInOrLink started")
+        Auth.auth().signIn(with: credential) { [weak self] result, error in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if let error = error {
+                    print("[Kiku Auth] signIn error: \(error.localizedDescription)")
+                    let nsError = error as NSError
+                    if nsError.code == AuthErrorCode.credentialAlreadyInUse.rawValue,
+                       let updated = nsError.userInfo[AuthErrorUserInfoUpdatedCredentialKey] as? AuthCredential {
+                        Auth.auth().signIn(with: updated) { [weak self] _, retryError in
+                            DispatchQueue.main.async {
+                                if let retryError = retryError {
+                                    self?.errorMessage = "サインインに失敗しました: \(retryError.localizedDescription)"
+                                } else {
+                                    self?.errorMessage = nil
+                                }
+                                self?.isSigningIn = false
+                            }
+                        }
+                    } else {
+                        self.errorMessage = "サインインに失敗しました: \(error.localizedDescription)"
+                        self.isSigningIn = false
+                    }
+                } else {
+                    print("[Kiku Auth] signIn success: \(result?.user.uid ?? "no uid")")
+                    self.errorMessage = nil
+                    self.isSigningIn = false
                 }
-            } else {
-                errorMessage = "サインインに失敗しました"
             }
         }
     }

@@ -120,7 +120,7 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: afterSeconds, repeats: false)
 
         let appGroup        = UserDefaults(suiteName: "group.com.yukichi.kiku")
-        let senderName      = appGroup?.string(forKey: "kiku.profile.name")     ?? "きく"
+        let senderName      = appGroup?.string(forKey: "kiku.profile.name")     ?? "Kiku"
         let senderEmoji     = appGroup?.string(forKey: "kiku.profile.emoji")    ?? "👤"
 
         let content = UNMutableNotificationContent()
@@ -172,7 +172,7 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         overrideSenderEmoji: String? = nil
     ) {
         let appGroup        = UserDefaults(suiteName: "group.com.yukichi.kiku")
-        let senderName      = overrideSenderName  ?? appGroup?.string(forKey: "kiku.profile.name")     ?? "きく"
+        let senderName      = overrideSenderName  ?? appGroup?.string(forKey: "kiku.profile.name")     ?? "Kiku"
         let senderEmoji     = overrideSenderEmoji ?? appGroup?.string(forKey: "kiku.profile.emoji")    ?? "👤"
         let senderIconMode  = overrideSenderName != nil ? "emoji" : (appGroup?.string(forKey: "kiku.profile.iconMode") ?? "emoji")
         let senderPhotoData = overrideSenderName != nil ? nil     : appGroup?.data(forKey: "kiku.profile.photo")
@@ -238,7 +238,7 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
                     content: questionText,
                     speakableGroupName: nil,
                     conversationIdentifier: senderName,
-                    serviceName: "きく",
+                    serviceName: "Kiku",
                     sender: sender,
                     attachments: nil
                 )

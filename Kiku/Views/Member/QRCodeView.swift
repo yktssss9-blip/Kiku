@@ -41,7 +41,7 @@ struct QRCodeView: View {
 
                 ShareLink(
                     item: Image(uiImage: qrImage),
-                    preview: SharePreview("きく - @\(username)", image: Image(uiImage: qrImage))
+                    preview: SharePreview("Kiku - @\(username)", image: Image(uiImage: qrImage))
                 ) {
                     Label("QRコードを共有", systemImage: "square.and.arrow.up")
                         .font(.subheadline.weight(.semibold))

@@ -46,7 +46,7 @@ struct SendTabView: View {
 
             VStack(spacing: 0) {
                 // ─── ロゴ ───
-                Text("きく")
+                Text("Kiku")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)

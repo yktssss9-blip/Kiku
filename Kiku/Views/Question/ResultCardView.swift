@@ -25,7 +25,7 @@ struct ResultCardView: View {
             statsRow
         }
         .padding(26)
-        .frame(width: 360)
+        .frame(maxWidth: 400)
         .background(Color.black)
     }
 
@@ -72,7 +72,7 @@ struct ResultCardView: View {
                 }
             }
             Spacer()
-            Text("きく")
+            Text("Kiku")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Color(white: 0.3))
         }

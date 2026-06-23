@@ -73,7 +73,7 @@ struct QuestionShareSheet: View {
 
                         ShareLink(
                             item: URL(string: inviteURL)!,
-                            subject: Text("きく - 回答リクエスト"),
+                            subject: Text("Kiku - 回答リクエスト"),
                             message: Text("「\(question.text)」に回答してください！")
                         ) {
                             Label("その他で共有", systemImage: "square.and.arrow.up")

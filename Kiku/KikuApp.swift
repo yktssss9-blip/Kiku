@@ -142,7 +142,7 @@ struct KikuApp: App {
                         }
                         Button("後で", role: .cancel) {}
                     } message: {
-                        Text("ロック画面・Dynamic Islandでの回答ボタンを使うには、設定 → 通知 → きく → 「Live Activity」をオンにしてください。")
+                        Text("ロック画面・Dynamic Islandでの回答ボタンを使うには、設定 → 通知 → Kiku → 「Live Activity」をオンにしてください。")
                     }
                     .onOpenURL { url in
                         handleURL(url)
@@ -444,7 +444,7 @@ struct KikuApp: App {
                     memberEmoji:         profileStore.emoji,
                     questionText:        question.text,
                     choices:             question.answerChoices,
-                    overrideSenderName:  senderFriend?.name  ?? "きく",
+                    overrideSenderName:  senderFriend?.name  ?? "Kiku",
                     overrideSenderEmoji: senderFriend?.emoji ?? "👤"
                 )
             }

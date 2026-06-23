@@ -17,10 +17,9 @@ struct ProfileSetupView: View {
 
     var canProceed: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
-            && name.count <= 10
+            && name.count <= 20
             && !username.trimmingCharacters(in: .whitespaces).isEmpty
             && username.count <= 20
-            && selectedData != nil
             && !isSubmitting
     }
 
@@ -30,7 +29,7 @@ struct ProfileSetupView: View {
 
             // ── ヘッダー ──
             VStack(spacing: 12) {
-                Text("きく")
+                Text("Kiku")
                     .font(.largeTitle)
                     .fontWeight(.bold)
 
@@ -239,25 +238,27 @@ struct ProfileSetupView: View {
             return
         }
 
-        guard let data = selectedData else { return }
-
-        // 写真を先にアップロードしてURLを取得（失敗したらここで止める）
-        let uploadedURL: String
-        do {
-            uploadedURL = try await store.uploadProfilePhoto(data)
-        } catch {
-            errorMessage = "写真のアップロードに失敗しました。もう一度試してください。"
-            return
+        // 写真がある場合はアップロード
+        var uploadedURL: String = ""
+        if let data = selectedData {
+            do {
+                uploadedURL = try await store.uploadProfilePhoto(data)
+            } catch {
+                errorMessage = "写真のアップロードに失敗しました。もう一度試してください。"
+                return
+            }
         }
 
-        // アップロード成功後にプロフィールをまとめて設定
+        // プロフィールをまとめて設定
         store.name            = name.trimmingCharacters(in: .whitespaces)
-        store.photoData       = data
+        store.photoData       = selectedData
         store.emoji           = "👤"
         store.activeHourStart = activeHourStart
         store.activeHourEnd   = activeHourEnd
-        store.photoURL        = uploadedURL
-        store.iconMode        = .photo
+        if !uploadedURL.isEmpty {
+            store.photoURL    = uploadedURL
+            store.iconMode    = .photo
+        }
     }
 }
 

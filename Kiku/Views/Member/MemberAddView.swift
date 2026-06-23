@@ -229,7 +229,7 @@ struct MemberAddView: View {
               let username = URLComponents(url: url, resolvingAgainstBaseURL: false)?
                   .queryItems?.first(where: { $0.name == "username" })?.value
         else {
-            qrError = "きくのQRコードではありません"
+            qrError = "KikuのQRコードではありません"
             return
         }
 

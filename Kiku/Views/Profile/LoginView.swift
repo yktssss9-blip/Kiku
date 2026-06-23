@@ -13,7 +13,7 @@ struct LoginView: View {
                 Spacer()
 
                 VStack(spacing: 20) {
-                    Text("き く")
+                    Text("Kiku")
                         .font(.system(size: 52, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
 
@@ -39,16 +39,21 @@ struct LoginView: View {
                             .tint(.white)
                             .frame(height: 52)
                     } else {
-                        SignInWithAppleButton(.signIn) { request in
-                            authStore.isSigningIn = true
-                            authStore.errorMessage = nil
-                            authStore.prepareAppleRequest(request)
-                        } onCompletion: { result in
-                            authStore.handleAppleSignIn(result: result)
+                        Button {
+                            authStore.startAppleSignIn()
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "apple.logo")
+                                    .font(.system(size: 18, weight: .medium))
+                                Text("Appleでサインイン")
+                                    .font(.system(size: 17, weight: .medium))
+                            }
+                            .foregroundStyle(.black)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
                         }
-                        .signInWithAppleButtonStyle(.white)
-                        .frame(height: 52)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
                         .padding(.horizontal, 32)
                     }
                 }
@@ -59,7 +64,7 @@ struct LoginView: View {
             timeoutTask?.cancel()
             if signing {
                 timeoutTask = Task {
-                    try? await Task.sleep(for: .seconds(15))
+                    try? await Task.sleep(for: .seconds(30))
                     if !Task.isCancelled && authStore.isSigningIn {
                         authStore.isSigningIn = false
                         authStore.errorMessage = "接続がタイムアウトしました。もう一度お試しください。"

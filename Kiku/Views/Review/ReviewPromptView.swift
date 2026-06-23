@@ -36,7 +36,7 @@ struct ReviewPromptView: View {
         .sheet(isPresented: $showMailCompose) {
             MailComposeView(
                 recipient: feedbackEmail,
-                subject: "【きく】ご意見・ご要望",
+                subject: "【Kiku】ご意見・ご要望",
                 body: feedbackText
             ) {
                 showMailCompose = false
@@ -61,7 +61,7 @@ struct ReviewPromptView: View {
         VStack(spacing: 32) {
             Spacer()
             VStack(spacing: 8) {
-                Text("きくはどうですか？")
+                Text("Kikuはどうですか？")
                     .font(.title2)
                     .fontWeight(.bold)
                 Text("ご利用の評価をお聞かせください")
@@ -216,7 +216,7 @@ struct ReviewPromptView: View {
     }
 
     private func sendViaMailtoURL() {
-        let subject = "【きく】ご意見・ご要望"
+        let subject = "【Kiku】ご意見・ご要望"
         guard
             let encodedSubject = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
             let encodedBody    = feedbackText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),

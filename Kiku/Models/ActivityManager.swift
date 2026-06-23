@@ -33,7 +33,7 @@ class ActivityManager: ObservableObject {
         guard ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] != "1" else { return }
 
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
-            lastError = "Live Activityが無効です。設定 → 通知 → きく → Live Activityをオンにしてください"
+            lastError = "Live Activityが無効です。設定 → 通知 → Kiku → Live Activityをオンにしてください"
             return
         }
 

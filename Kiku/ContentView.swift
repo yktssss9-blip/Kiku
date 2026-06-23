@@ -172,7 +172,7 @@ struct SettingsView: View {
                             }
 
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(purchaseStore.isPro ? "Shigodeki Pro" : "Proプランへアップグレード")
+                                Text(purchaseStore.isPro ? "Kiku Pro" : "Proプランへアップグレード")
                                     .font(.body)
                                     .foregroundStyle(.primary)
                                 Text(purchaseStore.isPro ? "ご利用中です" : "すべての機能をフル活用しよう")
@@ -486,7 +486,7 @@ struct SettingsView: View {
             .sheet(isPresented: $showMailCompose) {
                 MailComposeView(
                     recipient: "sykt.feedback@gmail.com",
-                    subject: "きく アプリへのフィードバック"
+                    subject: "Kiku アプリへのフィードバック"
                 )
             }
             .alert("メールを送信できません", isPresented: $showMailUnavailableAlert) {

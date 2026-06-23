@@ -118,7 +118,7 @@ private struct ProPaywallContent: View {
                 }
             }
 
-            Text("きく Pro")
+            Text("Kiku Pro")
                 .font(.title.bold())
 
             Text("コア機能は無料。\nProでもっと便利に、もっと楽しく。")
