@@ -89,7 +89,7 @@ struct ProfileSetupView: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 4)
 
-                TextField("例: 太郎", text: $name)
+                TextField("例: 太郎 / John", text: $name)
                     .font(.body)
                     .padding()
                     .background(Color(UIColor.secondarySystemBackground))
