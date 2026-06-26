@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>きく - 友達追加</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif;
+      background: #0d0d0d;
+      color: #f0f0f0;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 48px 24px;
+    }
+    .container {
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+    }
+    .app-name {
+      font-size: 13px;
+      color: #888;
+      letter-spacing: 0.12em;
+      margin-bottom: 24px;
+    }
+    .emoji-icon {
+      font-size: 64px;
+      margin-bottom: 20px;
+    }
+    .username {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      font-size: 15px;
+      color: #aaa;
+      margin-bottom: 36px;
+    }
+    .btn {
+      display: block;
+      width: 100%;
+      text-decoration: none;
+      font-size: 16px;
+      font-weight: 600;
+      padding: 16px;
+      border-radius: 14px;
+      border: none;
+      cursor: pointer;
+      margin-bottom: 12px;
+    }
+    .btn-primary {
+      background: #0a84ff;
+      color: white;
+    }
+    .btn-secondary {
+      background: #1a1a1a;
+      color: #aaa;
+    }
+    .error {
+      font-size: 15px;
+      color: #aaa;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="app-name">き く</div>
+
+    <div id="screen-add" style="display:none;">
+      <div class="emoji-icon">👋</div>
+      <div class="username" id="display-username"></div>
+      <div class="subtitle">さんと友達になる</div>
+      <a id="btn-open" class="btn btn-primary" href="#">Kiku で開く</a>
+      <a id="btn-store" class="btn btn-secondary" href="#">App Store で入手</a>
+    </div>
+
+    <div id="screen-error" style="display:none;">
+      <div class="emoji-icon">⚠️</div>
+      <p class="error">無効なリンクです</p>
+    </div>
+  </div>
+
+  <script>
+    var username = new URLSearchParams(location.search).get('username');
+    if (!username) {
+      document.getElementById('screen-error').style.display = '';
+    } else {
+      document.getElementById('screen-add').style.display = '';
+      document.getElementById('display-username').textContent = '@' + username;
+
+      var addURL = location.href;
+      document.getElementById('btn-open').href = addURL;
+
+      // App Store link (placeholder until app is published)
+      var storeBtn = document.getElementById('btn-store');
+      storeBtn.href = '#';
+      storeBtn.textContent = 'App Store（準備中）';
+    }
+  </script>
+</body>
+</html>

@@ -19,6 +19,10 @@
         "destination": "/index.html"
       },
       {
+        "source": "/add",
+        "destination": "/add.html"
+      },
+      {
         "source": "/support",
         "destination": "/support.html"
       }

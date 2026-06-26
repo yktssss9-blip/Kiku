@@ -7,7 +7,7 @@
     "ja"
   ],
   "locale": "ja",
-  "device": "iphone",
+  "device": "ipad",
   "orientation": "portrait",
   "appIcon": "/app-icon.png",
   "slidesByDevice": {
@@ -35,7 +35,7 @@
             "x": 105.60000000000001,
             "y": 229.44,
             "width": 1108.8,
-            "height": 803.0400000000001,
+            "height": 803.04,
             "rotation": 0,
             "zIndex": 4
           }
@@ -77,8 +77,7 @@
             "rotation": -26,
             "zIndex": 2
           }
-        },
-        "textElements": []
+        }
       },
       {
         "id": "kiku_send",
@@ -87,9 +86,9 @@
           "ja": "SEND"
         },
         "headline": {
-          "ja": "友達を選んで\nワンタップで送信"
+          "ja": "質問の回答状況が\n一目でわかる！"
         },
-        "screenshot": "",
+        "screenshot": "/screenshots/uploaded/6f6797c16eeb756a.jpg",
         "inverted": true,
         "transforms": {
           "device": {
@@ -101,34 +100,41 @@
             "zIndex": 1
           },
           "caption": {
-            "x": 105.59987618460946,
-            "y": 2487.199988912372,
-            "width": 1109,
+            "x": 79.59983247877472,
+            "y": 2487.199974768677,
+            "width": 1234,
             "height": 324,
             "rotation": 0,
             "zIndex": 2
           }
-        },
-        "textElements": []
+        }
       },
       {
         "id": "kiku_feed",
         "layout": "device-bottom",
         "label": {
-          "ja": "FEED"
+          "ja": "RANKING"
         },
         "headline": {
           "ja": "回答速度で\nランキング競争"
         },
-        "screenshot": "/screenshots/apple/iphone/ja/02-feed.png",
+        "screenshot": "/screenshots/uploaded/0d0167712c61bad8.png",
         "transforms": {
           "device": {
-            "x": 2878.7969151670995,
-            "y": 626.9125964010285,
+            "x": 136,
+            "y": 693,
             "width": 977,
             "height": 1991,
             "rotation": 0,
             "zIndex": 3
+          },
+          "caption": {
+            "x": 105,
+            "y": 229,
+            "width": 1108,
+            "height": 803,
+            "rotation": 0,
+            "zIndex": 4
           }
         }
       },
@@ -136,7 +142,7 @@
         "id": "kiku_ranking",
         "layout": "device-top",
         "label": {
-          "ja": "RANKING"
+          "ja": "FEED"
         },
         "headline": {
           "ja": "\n"
@@ -145,77 +151,198 @@
         "inverted": true,
         "transforms": {
           "device": {
-            "x": -1168.5424164524438,
-            "y": 677.8174807197954,
+            "x": 195,
+            "y": 412,
             "width": 1013,
             "height": 2064,
             "rotation": 0,
             "zIndex": 3
           },
           "caption": {
-            "x": -41.40002902787819,
-            "y": 290.2000080231011,
-            "width": 1403,
-            "height": 478,
+            "x": 105,
+            "y": 2487,
+            "width": 1108,
+            "height": 324,
             "rotation": 0,
             "zIndex": 4
           }
-        }
+        },
+        "textElements": [
+          {
+            "id": "s_mqt95oxz_i",
+            "text": {
+              "ja": "フィードで\n回答状況を確認"
+            },
+            "transform": {
+              "x": 278.15011470721674,
+              "y": 2509.536835884751,
+              "width": 841,
+              "height": 344,
+              "rotation": 0,
+              "zIndex": 6
+            },
+            "fontSize": 99,
+            "fontWeight": 800,
+            "align": "center"
+          }
+        ]
       },
       {
         "id": "kiku_more",
-        "layout": "no-device",
+        "layout": "device-bottom",
         "label": {
           "ja": "MORE"
         },
         "headline": {
-          "ja": "フィードで\n回答状況を確認"
+          "ja": "他にも、\n自動リマインダーなど\n機能は盛りだくさん！！"
         },
-        "screenshot": "",
+        "screenshot": "/screenshots/uploaded/0d0167712c61bad8.png",
         "transforms": {
           "caption": {
-            "x": 120.25438481451238,
-            "y": 238.14136520744134,
-            "width": 1111,
-            "height": 469,
+            "x": -23.423080756987474,
+            "y": 166.7716132315826,
+            "width": 1378,
+            "height": 803,
+            "rotation": 0,
+            "zIndex": 4
+          },
+          "device": {
+            "x": 153.1822478386166,
+            "y": 745.68,
+            "width": 1013.6355043227666,
+            "height": 2064.96,
+            "rotation": 0,
+            "zIndex": 3
+          }
+        }
+      }
+    ],
+    "android": [],
+    "ipad": [
+      {
+        "id": "kiku_ipad_hero",
+        "layout": "device-bottom",
+        "label": {
+          "ja": "きく"
+        },
+        "headline": {
+          "ja": "質問を送って\n即レスをもらおう"
+        },
+        "screenshot": "/screenshots/uploaded/9f04b51e3c233a2a.png"
+      },
+      {
+        "id": "kiku_ipad_live_activity",
+        "layout": "two-devices",
+        "label": {
+          "ja": "LIVE ACTIVITY"
+        },
+        "headline": {
+          "ja": "ロック画面から\nそのまま回答"
+        },
+        "screenshot": "/screenshots/uploaded/0fb98b1b9867abd4.png",
+        "screenshotSecondary": "/screenshots/uploaded/cfcdc177dfaac3e3.png",
+        "transforms": {
+          "deviceSecondary": {
+            "x": -319.27188405797096,
+            "y": 1077.8796160361378,
+            "width": 1238.3999999999999,
+            "height": 1608.3116883116882,
+            "rotation": 0,
+            "zIndex": 2
+          },
+          "device": {
+            "x": 802.7368626086982,
+            "y": 969.5016811594205,
+            "width": 1373.13792,
+            "height": 1783.2959999999998,
+            "rotation": 0,
+            "zIndex": 3
+          }
+        }
+      },
+      {
+        "id": "kiku_ipad_send",
+        "layout": "device-top",
+        "label": {
+          "ja": "SEND"
+        },
+        "headline": {
+          "ja": "質問の回答状況が\n一目でわかる！"
+        },
+        "screenshot": "/screenshots/uploaded/6f6797c16eeb756a.jpg",
+        "inverted": true,
+        "transforms": {
+          "device": {
+            "x": 293.07603478260717,
+            "y": -15.95362318840575,
+            "width": 1525.7087999999999,
+            "height": 1981.4399999999998,
+            "rotation": 0,
+            "zIndex": 3
+          },
+          "caption": {
+            "x": 173.09681159420325,
+            "y": 1956.3130434782606,
+            "width": 1733.76,
+            "height": 770.5600000000001,
             "rotation": 0,
             "zIndex": 4
           }
         }
       },
       {
-        "id": "s_mqix9whf_i",
+        "id": "kiku_ipad_feed",
         "layout": "device-bottom",
         "label": {
-          "en": "NEW"
+          "ja": "RANKING"
         },
         "headline": {
-          "en": "Edit this\nheadline."
+          "ja": "回答速度で\nランキング競争"
         },
-        "screenshot": "",
+        "screenshot": "/screenshots/uploaded/0d0167712c61bad8.png"
+      },
+      {
+        "id": "kiku_ipad_ranking",
+        "layout": "device-top",
+        "label": {
+          "ja": "FEED"
+        },
+        "headline": {
+          "ja": "フィードで\n回答状況を確認"
+        },
+        "screenshot": "/screenshots/apple/iphone/ja/01-ranking.png",
+        "inverted": true
+      },
+      {
+        "id": "kiku_ipad_more",
+        "layout": "device-bottom",
+        "label": {
+          "ja": "MORE"
+        },
+        "headline": {
+          "ja": "他にも、\n自動リマインダーなど\n機能は盛りだくさん！！"
+        },
+        "screenshot": "/screenshots/uploaded/0d0167712c61bad8.png",
         "transforms": {
-          "device": {
-            "x": 155.1823977238455,
-            "y": 749.6799754505876,
-            "width": 1003,
-            "height": 2043,
-            "rotation": -1,
-            "zIndex": 2
-          },
           "caption": {
-            "x": 79.79537275064467,
-            "y": 207.32174807197947,
-            "width": 1108.8,
-            "height": 803.04,
+            "x": 21.537226600004942,
+            "y": 96.51941916113785,
+            "width": 2125,
+            "height": 771,
             "rotation": 0,
-            "zIndex": 1
+            "zIndex": 4
+          },
+          "device": {
+            "x": 269.14559999999983,
+            "y": 715.5200000000002,
+            "width": 1525.7087999999999,
+            "height": 1981.4399999999998,
+            "rotation": 0,
+            "zIndex": 3
           }
-        },
-        "textElements": []
+        }
       }
     ],
-    "android": [],
-    "ipad": [],
     "android-7": [],
     "android-10": [],
     "feature-graphic": []

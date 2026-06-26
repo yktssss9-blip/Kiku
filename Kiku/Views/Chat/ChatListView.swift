@@ -4,6 +4,7 @@ struct ChatListView: View {
     @EnvironmentObject private var chatStore: ChatStore
     @EnvironmentObject private var friendStore: FriendStore
     @EnvironmentObject private var profileStore: ProfileStore
+    @EnvironmentObject private var authStore: AuthStore
 
     @State private var path: [ChatSession] = []
     @State private var sessionToDelete: ChatSession? = nil
@@ -46,19 +47,27 @@ struct ChatListView: View {
     // MARK: - Empty
 
     private var emptyState: some View {
-        VStack(spacing: 12) {
-            Spacer()
-            Image(systemName: "bubble.left.and.bubble.right")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
-            Text("チャットがありません")
-                .font(.headline)
-            Text("質問に回答するとチャットが開放されます")
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            Spacer()
+        ScrollView {
+            VStack(spacing: 12) {
+                Spacer().frame(height: 120)
+                Image(systemName: "bubble.left.and.bubble.right")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.secondary)
+                Text("チャットがありません")
+                    .font(.headline)
+                Text("質問に回答するとチャットが開放されます")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .refreshable {
+            guard let uid = authStore.user?.uid else { return }
+            async let c: () = chatStore.refresh(forUID: uid)
+            async let f: () = friendStore.refresh(forUID: uid)
+            _ = await (c, f)
         }
     }
 
@@ -88,6 +97,12 @@ struct ChatListView: View {
             }
         }
         .listStyle(.plain)
+        .refreshable {
+            guard let uid = authStore.user?.uid else { return }
+            async let c: () = chatStore.refresh(forUID: uid)
+            async let f: () = friendStore.refresh(forUID: uid)
+            _ = await (c, f)
+        }
         .alert(sessionToDelete.map { chatStore.isOwn($0) ? "チャットを削除しますか？" : "リストから削除しますか？" } ?? "削除しますか？", isPresented: $showDeleteAlert, presenting: sessionToDelete) { s in
             Button("削除", role: .destructive) {
                 if chatStore.isOwn(s) {
@@ -141,10 +156,24 @@ struct ChatListView: View {
 
             Spacer(minLength: 0)
 
-            if let last = session.messages.last {
-                Text(last.sentAt.formatted(.dateTime.hour().minute()))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .trailing, spacing: 4) {
+                if let last = session.messages.last {
+                    Text(last.sentAt.formatted(.dateTime.hour().minute()))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                let unread = chatStore.unreadCount(for: session.id)
+                if unread > 0 {
+                    Text("\(unread)")
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.green)
+                        .clipShape(Capsule())
+                }
             }
         }
         .padding(.vertical, 6)

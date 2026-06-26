@@ -132,6 +132,12 @@ class TemplateStore: ObservableObject {
         listener = nil
     }
 
+    func refresh(forUID uid: String) async {
+        stopListening()
+        startListening(forUID: uid)
+        try? await Task.sleep(nanoseconds: 500_000_000)
+    }
+
     // MARK: - CRUD
 
     func add(text: String, friendIds: [UUID], groupId: UUID?, choices: [AnswerChoice], friends: [Friend] = []) {

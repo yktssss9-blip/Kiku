@@ -49,7 +49,9 @@ struct ChatView: View {
                 ScrollView {
                     LazyVStack(spacing: 12) {
                         ForEach(filteredMessages) { message in
-                            MessageBubble(message: message, myEmoji: profileStore.emoji, sessionId: session.id)
+                            let globalIndex = currentSession?.messages.firstIndex(where: { $0.id == message.id })
+                            let readBy = globalIndex.flatMap { idx in currentSession.map { chatStore.readCount(forMessageAt: idx, in: $0) } } ?? 0
+                            MessageBubble(message: message, myEmoji: profileStore.emoji, sessionId: session.id, readByCount: readBy)
                                 .contextMenu {
                                     messageContextMenu(for: message)
                                 }
@@ -74,6 +76,9 @@ struct ChatView: View {
         .onAppear {
             chatStore.markAsRead(sessionId: session.id)
             NotificationManager.shared.activeChatQuestionId = session.questionId
+        }
+        .onChange(of: currentSession?.messages.count) { _ in
+            chatStore.markAsRead(sessionId: session.id)
         }
         .onDisappear {
             if NotificationManager.shared.activeChatQuestionId == session.questionId {
@@ -319,6 +324,7 @@ struct MessageBubble: View {
     let message: ChatMessage
     let myEmoji: String
     let sessionId: UUID
+    var readByCount: Int = 0
 
     @EnvironmentObject private var chatStore: ChatStore
     @EnvironmentObject private var profileStore: ProfileStore
@@ -363,7 +369,14 @@ struct MessageBubble: View {
     private var myBubble: some View {
         HStack(alignment: .bottom, spacing: 6) {
             Spacer(minLength: 60)
-            timeLabel
+            VStack(alignment: .trailing, spacing: 1) {
+                if readByCount > 0 {
+                    Text(readByCount > 1 ? "既読 \(readByCount)" : "既読")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                timeLabel
+            }
             Text(message.text)
                 .font(.body)
                 .padding(.horizontal, 14)

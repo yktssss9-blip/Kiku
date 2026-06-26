@@ -63,20 +63,26 @@ struct ProfileSettingsView: View {
                 // アバター + アイコン種別セレクター
                 Section {
                     VStack(spacing: 16) {
-                        PhotosPicker(selection: $photoItem, matching: .images) {
-                            ZStack(alignment: .bottomTrailing) {
-                                avatarView
-                                    .frame(width: 100, height: 100)
+                        ZStack(alignment: .bottomTrailing) {
+                            avatarView
+                                .frame(width: 100, height: 100)
+                                .onTapGesture {
+                                    if rawPickedImage != nil {
+                                        showCrop = true
+                                    }
+                                }
+                            PhotosPicker(selection: $photoItem, matching: .images) {
                                 Image(systemName: "camera.circle.fill")
                                     .font(.system(size: 26))
                                     .foregroundStyle(.white, Color.blue)
                                     .background(Color(UIColor.systemBackground).clipShape(Circle()).padding(1))
                             }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                         .onChange(of: photoItem) { _, newItem in
+                            guard let newItem else { return }
                             Task {
-                                if let data = try? await newItem?.loadTransferable(type: Data.self),
+                                if let data = try? await newItem.loadTransferable(type: Data.self),
                                    let uiImage = UIImage(data: data) {
                                     rawPickedImage = uiImage
                                     iconType = .photo
@@ -261,11 +267,12 @@ struct ProfileSettingsView: View {
                     photoItem     = nil
                 }
             }
-            .sheet(isPresented: $showCrop) {
+            .sheet(isPresented: $showCrop, onDismiss: {
+                photoItem = nil
+            }) {
                 if let raw = rawPickedImage {
                     ImageCropView(image: raw) { cropped in
-                        selectedImage  = cropped
-                        rawPickedImage = nil
+                        selectedImage = cropped
                     }
                 }
             }

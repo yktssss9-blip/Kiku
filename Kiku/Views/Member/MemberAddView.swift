@@ -223,12 +223,24 @@ struct MemberAddView: View {
     }
 
     private func handleScanned(_ raw: String) {
-        guard let url = URL(string: raw),
-              url.scheme == "kiku",
-              url.host == "add",
-              let username = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-                  .queryItems?.first(where: { $0.name == "username" })?.value
-        else {
+        guard let url = URL(string: raw) else {
+            qrError = "KikuのQRコードではありません"
+            return
+        }
+
+        let username: String?
+        if url.scheme == "kiku" && url.host == "add" {
+            username = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "username" })?.value
+        } else if url.host == "shigodeki-8e49a.web.app",
+                  url.pathComponents.count >= 2, url.pathComponents[1] == "add" {
+            username = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "username" })?.value
+        } else {
+            username = nil
+        }
+
+        guard let username, !username.isEmpty else {
             qrError = "KikuのQRコードではありません"
             return
         }
@@ -276,7 +288,7 @@ struct MemberAddView: View {
 
 // MARK: - スキャン後の確認シート
 
-private struct ScannedUserConfirmView: View {
+struct ScannedUserConfirmView: View {
     let user: FirestoreUser
     let isSending: Bool
     let isSent: Bool

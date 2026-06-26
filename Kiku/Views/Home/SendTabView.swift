@@ -8,6 +8,7 @@ struct SendTabView: View {
     @EnvironmentObject private var purchaseStore: PurchaseStore
     @EnvironmentObject private var templateStore: TemplateStore
     @EnvironmentObject private var reviewManager: ReviewManager
+    @EnvironmentObject private var authStore:     AuthStore
 
     @State private var selectedFriends: [Friend]   = []
     @State private var selectedGroup:   KikuGroup? = nil
@@ -41,48 +42,58 @@ struct SendTabView: View {
     }
 
     var body: some View {
-        ZStack {
-            Color(UIColor.systemBackground).ignoresSafeArea()
+        GeometryReader { geo in
+            ScrollView {
+                VStack(spacing: 0) {
+                    // ─── ロゴ ───
+                    Text("Kiku")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 16)
+                        .padding(.bottom, 8)
 
-            VStack(spacing: 0) {
-                // ─── ロゴ ───
-                Text("Kiku")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 16)
-                    .padding(.bottom, 8)
+                    // ─── 友達横スクロール行 ───
+                    friendRow
 
-                // ─── 友達横スクロール行 ───
-                friendRow
+                    // ─── グループ横スクロール ───
+                    if !groupStore.groups.isEmpty {
+                        groupScroll
+                            .padding(.top, 12)
+                    }
 
-                // ─── グループ横スクロール ───
-                if !groupStore.groups.isEmpty {
-                    groupScroll
-                        .padding(.top, 12)
+                    // ─── 選択済み表示エリア ───
+                    selectedRecipientsArea
+
+                    // ─── 質問入力 ───
+                    questionInput
+                        .padding(.horizontal, 24)
+
+                    Spacer()
+
+                    // ─── 選択肢チップ行 ───
+                    choiceRow
+                        .padding(.horizontal, 24)
+                        .padding(.top, 16)
+
+                    // ─── 送信エリア ───
+                    sendRow
+                        .padding(.horizontal, 24)
+                        .padding(.top, 16)
+                        .padding(.bottom, 32)
                 }
-
-                // ─── 選択済み表示エリア ───
-                selectedRecipientsArea
-
-                // ─── 質問入力 ───
-                questionInput
-                    .padding(.horizontal, 24)
-
-                Spacer()
-
-                // ─── 選択肢チップ行 ───
-                choiceRow
-                    .padding(.horizontal, 24)
-                    .padding(.top, 16)
-
-                // ─── 送信エリア ───
-                sendRow
-                    .padding(.horizontal, 24)
-                    .padding(.top, 16)
-                    .padding(.bottom, 32)
+                .frame(minHeight: geo.size.height)
+            }
+            .refreshable {
+                guard let uid = authStore.user?.uid else { return }
+                async let q: () = questionStore.refresh(forUID: uid)
+                async let f: () = friendStore.refresh(forUID: uid)
+                async let g: () = groupStore.refresh(forUID: uid)
+                async let t: () = templateStore.refresh(forUID: uid)
+                _ = await (q, f, g, t)
             }
         }
+        .background(Color(UIColor.systemBackground).ignoresSafeArea())
         .alert("送信できません", isPresented: $showStopTimeAlert) {
             Button("OK", role: .cancel) {}
         } message: {

@@ -8,11 +8,13 @@ struct ImageCropView: View {
 
     @State private var scale: CGFloat        = 1.0
     @State private var lastScale: CGFloat    = 1.0
+    @State private var minScale: CGFloat     = 1.0
     @State private var offset: CGSize        = .zero
     @State private var lastOffset: CGSize    = .zero
     @State private var containerSize: CGSize = .zero
 
     private let cropSize: CGFloat = 280
+    private let maxScale: CGFloat = 5.0
 
     var body: some View {
         NavigationStack {
@@ -53,9 +55,12 @@ struct ImageCropView: View {
                     SimultaneousGesture(
                         MagnificationGesture()
                             .onChanged { value in
-                                scale = max(1.0, lastScale * value)
+                                scale = min(maxScale, max(minScale, lastScale * value))
                             }
                             .onEnded { _ in
+                                withAnimation(.interactiveSpring()) {
+                                    scale = min(maxScale, max(minScale, scale))
+                                }
                                 lastScale = scale
                                 clampOffset(geoSize: geo.size)
                             },
@@ -111,13 +116,11 @@ struct ImageCropView: View {
         guard geoSize.width > 0, geoSize.height > 0,
               image.size.width > 0, image.size.height > 0 else { return }
 
-        // scaledToFill で適用されるスケール
         let fillScale = max(geoSize.width / image.size.width,
                             geoSize.height / image.size.height)
-        // fillScale 後の最小辺が cropSize を下回る場合だけ拡大
         let scaledMinDim = min(image.size.width * fillScale, image.size.height * fillScale)
-        let minForCrop = cropSize / scaledMinDim
-        scale = max(1.0, minForCrop)
+        minScale = cropSize / scaledMinDim
+        scale = max(minScale, 1.0)
         lastScale = scale
     }
 

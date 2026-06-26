@@ -41,6 +41,12 @@ class PointStore: ObservableObject {
         listener = nil
     }
 
+    func refresh(forUID uid: String) async {
+        stopListening()
+        startListening(forUID: uid)
+        try? await Task.sleep(nanoseconds: 500_000_000)
+    }
+
     private func mergeFromFirestore(_ docs: [QueryDocumentSnapshot]) {
         var merged = self.records
         for doc in docs {

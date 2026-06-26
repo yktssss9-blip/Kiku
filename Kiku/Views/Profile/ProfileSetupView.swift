@@ -9,6 +9,9 @@ struct ProfileSetupView: View {
     @State private var username         = ""
     @State private var selectedItem: PhotosPickerItem? = nil
     @State private var selectedData: Data?             = nil
+    @State private var rawPickedImage: UIImage?        = nil
+    @State private var croppedImage: UIImage?           = nil
+    @State private var showCrop                        = false
     @State private var isSubmitting     = false
     @State private var errorMessage     = ""
     @State private var activeHourStart  = 9
@@ -41,10 +44,10 @@ struct ProfileSetupView: View {
             .padding(.bottom, 40)
 
             // ── 写真ピッカー ──
-            PhotosPicker(selection: $selectedItem, matching: .images) {
-                ZStack {
-                    if let data = selectedData, let uiImage = UIImage(data: data) {
-                        Image(uiImage: uiImage)
+            ZStack(alignment: .bottomTrailing) {
+                Group {
+                    if let img = croppedImage {
+                        Image(uiImage: img)
                             .resizable()
                             .scaledToFill()
                             .frame(width: 100, height: 100)
@@ -63,20 +66,39 @@ struct ProfileSetupView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    if selectedData != nil {
-                        Image(systemName: "pencil.circle.fill")
-                            .font(.title3)
-                            .foregroundStyle(.blue)
-                            .background(Color.white.clipShape(Circle()))
-                            .offset(x: 34, y: 34)
-                    }
                 }
                 .frame(width: 100, height: 100)
+                .onTapGesture {
+                    if rawPickedImage != nil {
+                        showCrop = true
+                    }
+                }
+
+                PhotosPicker(selection: $selectedItem, matching: .images) {
+                    Image(systemName: "camera.circle.fill")
+                        .font(.system(size: 26))
+                        .foregroundStyle(.white, Color.blue)
+                        .background(Color(UIColor.systemBackground).clipShape(Circle()).padding(1))
+                }
+                .buttonStyle(.plain)
             }
             .onChange(of: selectedItem) { _, newItem in
+                guard let newItem else { return }
                 Task {
-                    if let data = try? await newItem?.loadTransferable(type: Data.self) {
-                        selectedData = data
+                    if let data = try? await newItem.loadTransferable(type: Data.self),
+                       let uiImage = UIImage(data: data) {
+                        rawPickedImage = uiImage
+                        showCrop = true
+                    }
+                }
+            }
+            .sheet(isPresented: $showCrop, onDismiss: {
+                selectedItem = nil
+            }) {
+                if let raw = rawPickedImage {
+                    ImageCropView(image: raw) { cropped in
+                        croppedImage = cropped
+                        selectedData = cropped.jpegData(compressionQuality: 0.9)
                     }
                 }
             }

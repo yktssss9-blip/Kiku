@@ -7,6 +7,7 @@ import MessageUI
 struct ContentView: View {
     @Binding var selectedTab: Int
     @AppStorage("kiku.isDark") private var isDark: Bool = true
+    @AppStorage("kiku.onboardingCompleted") private var onboardingCompleted = false
 
     @EnvironmentObject private var questionStore: QuestionStore
     @EnvironmentObject private var profileStore:  ProfileStore
@@ -66,6 +67,11 @@ struct ContentView: View {
                     Label("設定", systemImage: "gearshape")
                 }
                 .tag(4)
+        }
+        .overlay {
+            if !onboardingCompleted {
+                OnboardingOverlay(selectedTab: $selectedTab)
+            }
         }
         .preferredColorScheme(isDark ? .dark : .light)
     }
@@ -430,6 +436,13 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("設定")
+            .refreshable {
+                guard let uid = authStore.user?.uid else { return }
+                async let f: () = friendStore.refresh(forUID: uid)
+                _ = await f
+                profileStore.syncFromFirestore()
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
             .sheet(isPresented: $isEditingProfile) {
                 ProfileSettingsView()
                     .environmentObject(profileStore)

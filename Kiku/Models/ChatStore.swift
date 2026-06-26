@@ -89,6 +89,7 @@ struct ChatSession: Identifiable, Codable {
     var messages: [ChatMessage] = []
     var createdAt: Date = Date()
     var lastReadMessageCount: Int = 0
+    var readUpTo: [String: Int] = [:]
     /// 質問作成者のFirebase UID（自分のチャットか受信したチャットかの判定に使用。Firestoreの "createdBy" と対応）
     var creatorUID: String? = nil
 
@@ -102,7 +103,7 @@ struct ChatSession: Identifiable, Codable {
 
 extension ChatSession {
     enum CodingKeys: String, CodingKey {
-        case id, questionId, questionText, memberAnswers, messages, createdAt, lastReadMessageCount, creatorUID
+        case id, questionId, questionText, memberAnswers, messages, createdAt, lastReadMessageCount, readUpTo, creatorUID
     }
 
     init(from decoder: Decoder) throws {
@@ -114,6 +115,7 @@ extension ChatSession {
         messages             = try c.decodeIfPresent([ChatMessage].self,   forKey: .messages)       ?? []
         createdAt            = try c.decodeIfPresent(Date.self,            forKey: .createdAt)      ?? Date()
         lastReadMessageCount = try c.decodeIfPresent(Int.self,             forKey: .lastReadMessageCount) ?? 0
+        readUpTo             = try c.decodeIfPresent([String: Int].self,   forKey: .readUpTo) ?? [:]
         creatorUID           = try c.decodeIfPresent(String.self,          forKey: .creatorUID)
     }
 }
@@ -176,6 +178,14 @@ class ChatStore: ObservableObject {
         receivedListener = nil
     }
 
+    func refresh(forUID uid: String) async {
+        stopListening()
+        stopListeningReceived()
+        startListening(forUID: uid)
+        startListeningReceived(forUID: uid)
+        try? await Task.sleep(nanoseconds: 500_000_000)
+    }
+
     private func mergeFromFirestore(_ docs: [QueryDocumentSnapshot]) {
         var merged = self.sessions
         for doc in docs {
@@ -187,6 +197,7 @@ class ChatStore: ObservableObject {
                 merged[idx].messages.append(contentsOf: newMessages)
                 merged[idx].memberAnswers = session.memberAnswers
                 merged[idx].creatorUID    = session.creatorUID
+                merged[idx].readUpTo      = session.readUpTo
             } else {
                 merged.append(session)
             }
@@ -212,6 +223,7 @@ class ChatStore: ObservableObject {
                 merged[idx].messages.append(contentsOf: newMessages)
                 merged[idx].memberAnswers = session.memberAnswers
                 merged[idx].creatorUID    = session.creatorUID
+                merged[idx].readUpTo      = session.readUpTo
             } else {
                 var newSession = session
                 newSession.lastReadMessageCount = readCounts[session.questionId.uuidString] ?? 0
@@ -461,13 +473,30 @@ class ChatStore: ObservableObject {
     }
 
     func markAsRead(sessionId: UUID) {
+        guard let myUID = Auth.auth().currentUser?.uid else { return }
+
+        let questionId: UUID
+        let count: Int
+
         if let idx = sessions.firstIndex(where: { $0.id == sessionId }) {
-            sessions[idx].lastReadMessageCount = sessions[idx].messages.count
+            count = sessions[idx].messages.count
+            guard sessions[idx].lastReadMessageCount != count else { return }
+            sessions[idx].lastReadMessageCount = count
+            sessions[idx].readUpTo[myUID] = count
+            questionId = sessions[idx].questionId
         } else if let idx = receivedSessions.firstIndex(where: { $0.id == sessionId }) {
-            let count = receivedSessions[idx].messages.count
+            count = receivedSessions[idx].messages.count
+            guard receivedSessions[idx].lastReadMessageCount != count else { return }
             receivedSessions[idx].lastReadMessageCount = count
+            receivedSessions[idx].readUpTo[myUID] = count
             saveReceivedReadCount(questionId: receivedSessions[idx].questionId, count: count)
+            questionId = receivedSessions[idx].questionId
+        } else {
+            return
         }
+
+        db.collection("chats").document(questionId.uuidString)
+            .updateData(["readUpTo.\(myUID)": count])
     }
 
     func unreadCount(for sessionId: UUID) -> Int {
@@ -478,6 +507,13 @@ class ChatStore: ObservableObject {
             return max(0, session.messages.count - session.lastReadMessageCount)
         }
         return 0
+    }
+
+    func readCount(forMessageAt index: Int, in session: ChatSession) -> Int {
+        guard let myUID = Auth.auth().currentUser?.uid else { return 0 }
+        return session.readUpTo
+            .filter { $0.key != myUID && $0.value >= index + 1 }
+            .count
     }
 
     var totalUnread: Int {
@@ -563,7 +599,8 @@ class ChatStore: ObservableObject {
             "createdAt":       Timestamp(date: session.createdAt),
             "createdBy":       ownerUID,
             "participantUIDs": participantUIDs,
-            "messages":        messagesData
+            "messages":        messagesData,
+            "readUpTo":        session.readUpTo
         ]
     }
 
@@ -577,16 +614,23 @@ class ChatStore: ObservableObject {
         let creatorUID    = data["createdBy"] as? String
         let messagesData  = data["messages"] as? [[String: Any]] ?? []
 
+        let myUID = Auth.auth().currentUser?.uid
         let messages: [ChatMessage] = messagesData.compactMap { m in
             guard let idStr  = m["id"] as? String,
                   let id     = UUID(uuidString: idStr),
                   let text   = m["text"] as? String,
-                  let isFromMe = m["isFromMe"] as? Bool else { return nil }
+                  let storedIsFromMe = m["isFromMe"] as? Bool else { return nil }
             let senderId          = (m["senderId"] as? String).flatMap { UUID(uuidString: $0) }
             let channel           = ChatChannel(rawValue: m["channel"] as? String ?? "all") ?? .all
             let sentAt            = (m["sentAt"] as? Timestamp)?.dateValue() ?? Date()
             let reactions         = m["reactions"] as? [String: [String]] ?? [:]
             let senderFirebaseUID = m["senderFirebaseUID"] as? String
+            let resolvedIsFromMe: Bool
+            if let senderUID = senderFirebaseUID, let myUID {
+                resolvedIsFromMe = senderUID == myUID
+            } else {
+                resolvedIsFromMe = storedIsFromMe
+            }
             return ChatMessage(
                 id:                id,
                 senderId:          senderId,
@@ -595,7 +639,7 @@ class ChatStore: ObservableObject {
                 answerValue:       m["answerValue"] as? String ?? "",
                 channel:           channel,
                 text:              text,
-                isFromMe:          isFromMe,
+                isFromMe:          resolvedIsFromMe,
                 sentAt:            sentAt,
                 reactions:         reactions,
                 senderFirebaseUID: senderFirebaseUID
@@ -607,6 +651,7 @@ class ChatStore: ObservableObject {
         session.messages      = messages
         session.createdAt     = createdAt
         session.creatorUID    = creatorUID
+        session.readUpTo      = data["readUpTo"] as? [String: Int] ?? [:]
         return session
     }
 

@@ -39,7 +39,8 @@ struct Friend: Identifiable, Codable {
 
 // MARK: - Firestore検索結果
 
-struct FirestoreUser {
+struct FirestoreUser: Identifiable {
+    var id: String { uid }
     let uid: String
     let name: String
     let emoji: String
@@ -263,6 +264,12 @@ class FriendStore: ObservableObject {
         sentRequestsListener?.remove()
         requestsListener = nil
         sentRequestsListener = nil
+    }
+
+    func refresh(forUID uid: String) async {
+        stopListeningRequests()
+        startListeningRequests(forUID: uid)
+        await refreshFriendProfiles()
     }
 
     func sendFriendRequest(

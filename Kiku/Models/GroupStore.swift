@@ -72,6 +72,12 @@ class GroupStore: ObservableObject {
         listener = nil
     }
 
+    func refresh(forUID uid: String) async {
+        stopListening()
+        startListening(forUID: uid)
+        try? await Task.sleep(nanoseconds: 500_000_000)
+    }
+
     /// 旧ローカルデータ（createdBy が空）を初回ログイン時に Firestore へアップロード
     private func migrateLocalGroupsIfNeeded(uid: String) {
         let targets = groups.filter { $0.createdBy.isEmpty }

@@ -124,11 +124,16 @@ class QuestionStore: ObservableObject {
     private var isUpdatingFromFirestore = false
     private var detectedReceivedIds: Set<UUID> = []
     private var isInitialReceivedLoad = true
+    private let completionNotifiedKey = "kiku.completionNotifiedIds"
+    private var notifiedCompletionIds: Set<UUID> = []
 
     init() {
         if let data = UserDefaults.standard.data(forKey: key),
            let decoded = try? JSONDecoder().decode([Question].self, from: data) {
             questions = decoded
+        }
+        if let ids = UserDefaults.standard.stringArray(forKey: completionNotifiedKey) {
+            notifiedCompletionIds = Set(ids.compactMap { UUID(uuidString: $0) })
         }
         purgeOldCompleted()
     }
@@ -166,6 +171,14 @@ class QuestionStore: ObservableObject {
     func stopListeningReceived() {
         receivedListener?.remove()
         receivedListener = nil
+    }
+
+    func refresh(forUID uid: String) async {
+        stopListening()
+        stopListeningReceived()
+        startListening(forUID: uid)
+        startListeningReceived(forUID: uid)
+        try? await Task.sleep(nanoseconds: 500_000_000)
     }
 
     private func mergeReceivedFromFirestore(_ snapshot: QuerySnapshot, forUID uid: String) {
@@ -244,6 +257,7 @@ class QuestionStore: ObservableObject {
         }
         let newlyCompleted = merged.filter { newQ in
             newQ.isCompleted &&
+            !self.notifiedCompletionIds.contains(newQ.id) &&
             !(self.questions.first { $0.id == newQ.id }?.isCompleted ?? false)
         }
         let updatedQuestions = merged.filter { newQ in
@@ -254,6 +268,7 @@ class QuestionStore: ObservableObject {
             self.questions = merged
             self.isUpdatingFromFirestore = false
             for q in newlyCompleted {
+                self.markCompletionNotified(q.id)
                 NotificationCenter.default.post(name: .kikuQuestionCompleted, object: q)
                 NotificationManager.shared.scheduleCompletion(question: q)
             }
@@ -357,7 +372,8 @@ class QuestionStore: ObservableObject {
         }
         onAnswered?(questionId, memberId, question.text, value)
 
-        if questions[idx].isCompleted {
+        if questions[idx].isCompleted && !notifiedCompletionIds.contains(questionId) {
+            markCompletionNotified(questionId)
             let completedQ = questions[idx]
             NotificationCenter.default.post(name: .kikuQuestionCompleted, object: completedQ)
             NotificationManager.shared.scheduleCompletion(question: completedQ)
@@ -443,7 +459,8 @@ class QuestionStore: ObservableObject {
                                                questionText: q.text, elapsed: elapsed)
                 }
                 onAnswered?(qid, mid, q.text, value)
-                if questions[idx].isCompleted {
+                if questions[idx].isCompleted && !notifiedCompletionIds.contains(qid) {
+                    markCompletionNotified(qid)
                     let completedQ = questions[idx]
                     NotificationCenter.default.post(name: .kikuQuestionCompleted, object: completedQ)
                     NotificationManager.shared.scheduleCompletion(question: completedQ)
@@ -512,6 +529,12 @@ class QuestionStore: ObservableObject {
         if removed > 0 {
             print("[QuestionStore] 自動削除: 完了済み古い質問を \(removed) 件削除しました")
         }
+    }
+
+    private func markCompletionNotified(_ questionId: UUID) {
+        notifiedCompletionIds.insert(questionId)
+        let ids = notifiedCompletionIds.map(\.uuidString)
+        UserDefaults.standard.set(ids, forKey: completionNotifiedKey)
     }
 
     // MARK: - Firestore データ変換

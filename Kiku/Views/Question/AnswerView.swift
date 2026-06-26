@@ -756,7 +756,11 @@ struct AnswerView: View {
                 }
             }
         } else {
-            questionStore.submit(questionId: question.id, memberId: memberId, value: value)
+            if questionStore.questions.contains(where: { $0.id == question.id }) {
+                questionStore.submit(questionId: question.id, memberId: memberId, value: value)
+            } else {
+                questionStore.submitReceived(questionId: question.id, memberId: memberId, value: value)
+            }
             Task {
                 await ActivityManager.shared.end(questionId: question.id, memberId: memberId)
                 // 星回答はボタン操作待ちのため自動クローズしない

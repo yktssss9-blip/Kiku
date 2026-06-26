@@ -7,6 +7,7 @@ struct MemberListView: View {
     @EnvironmentObject private var profileStore:  ProfileStore
     @EnvironmentObject private var questionStore: QuestionStore
     @EnvironmentObject private var purchaseStore: PurchaseStore
+    @EnvironmentObject private var authStore:     AuthStore
 
     @State private var selectedTab = 0
     @State private var selectedEntry: RankedEntry?
@@ -19,7 +20,7 @@ struct MemberListView: View {
             .map { RankedEntry(rank: 0, friend: $0,
                                avgSpeed: pointStore.averageSpeed(for: $0.id),
                                isMe: $0.id == profileStore.myId) }
-            .filter { $0.avgSpeed != nil }
+            .filter { $0.isMe || $0.avgSpeed != nil }
             .sorted {
                 switch ($0.avgSpeed, $1.avgSpeed) {
                 case (.some(let a), .some(let b)): return a < b
@@ -53,6 +54,13 @@ struct MemberListView: View {
                         rankingSection
                     }
                     .listStyle(.insetGrouped)
+                    .refreshable {
+                        guard let uid = authStore.user?.uid else { return }
+                        async let p: () = pointStore.refresh(forUID: uid)
+                        async let f: () = friendStore.refresh(forUID: uid)
+                        _ = await (p, f)
+                        await friendStore.fetchProStatuses()
+                    }
                     .navigationTitle("シゴできランキング")
                     .navigationBarTitleDisplayMode(.inline)
                     .task { await friendStore.fetchProStatuses() }

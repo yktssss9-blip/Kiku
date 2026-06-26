@@ -62,6 +62,9 @@ struct KikuApp: App {
     @State private var selectedTab = 0
     @State private var answerTarget: AnswerTarget? = nil
     @State private var pendingInviteURL: URL? = nil
+    @State private var pendingFriendUser: FirestoreUser? = nil
+    @State private var isSendingFriendRequest = false
+    @State private var sentFriendUID: String? = nil
     @State private var showLiveActivityDisabledAlert = false
 
     var body: some Scene {
@@ -172,6 +175,35 @@ struct KikuApp: App {
                             jumpToTimePicker: target.jumpToTimePicker
                         )
                         .environmentObject(questionStore)
+                    }
+                    .sheet(item: $pendingFriendUser) { user in
+                        ScannedUserConfirmView(
+                            user: user,
+                            isSending: isSendingFriendRequest,
+                            isSent: sentFriendUID == user.uid
+                        ) {
+                            guard !isSendingFriendRequest else { return }
+                            isSendingFriendRequest = true
+                            Task {
+                                defer { Task { @MainActor in isSendingFriendRequest = false } }
+                                do {
+                                    try await friendStore.sendFriendRequest(
+                                        to: user,
+                                        fromName: profileStore.name,
+                                        fromEmoji: profileStore.emoji,
+                                        fromUsername: profileStore.username,
+                                        fromPhotoURL: profileStore.photoURL
+                                    )
+                                    await MainActor.run { sentFriendUID = user.uid }
+                                    try? await Task.sleep(nanoseconds: 1_200_000_000)
+                                    await MainActor.run { pendingFriendUser = nil }
+                                } catch {
+                                    print("[KikuApp] sendFriendRequest error: \(error)")
+                                }
+                            }
+                        }
+                        .presentationDetents([.medium])
+                        .presentationDragIndicator(.hidden)
                     }
                     .sheet(isPresented: $reviewManager.showPrompt) {
                         ReviewPromptView()
@@ -296,10 +328,34 @@ struct KikuApp: App {
             switch url.host {
             case "answer": resolveAnswerTarget(from: url)
             case "invite": resolveInviteTarget(from: url)
+            case "add":    resolveAddFriendTarget(from: url)
             default: break
             }
         } else if url.host == "shigodeki-8e49a.web.app" {
-            resolveWebInviteTarget(from: url)
+            let parts = url.pathComponents
+            if parts.count >= 2, parts[1] == "add" {
+                resolveAddFriendTarget(from: url)
+            } else {
+                resolveWebInviteTarget(from: url)
+            }
+        }
+    }
+
+    private func resolveAddFriendTarget(from url: URL) {
+        guard let username = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "username" })?.value,
+              !username.isEmpty
+        else { return }
+
+        sentFriendUID = nil
+        Task { @MainActor in
+            do {
+                if let user = try await friendStore.searchUser(username: username) {
+                    pendingFriendUser = user
+                }
+            } catch {
+                print("[KikuApp] resolveAddFriendTarget error: \(error)")
+            }
         }
     }
 

@@ -6,6 +6,7 @@ struct HomeView: View {
     @EnvironmentObject private var groupStore:    GroupStore
     @EnvironmentObject private var profileStore:  ProfileStore
     @EnvironmentObject private var chatStore:     ChatStore
+    @EnvironmentObject private var authStore:     AuthStore
 
     // 最新順フィード
     private var feedQuestions: [Question] {
@@ -90,6 +91,14 @@ struct HomeView: View {
                 .padding(.bottom, 32)
             }
             .background(Color(UIColor.systemGroupedBackground))
+            .refreshable {
+                guard let uid = authStore.user?.uid else { return }
+                async let q: () = questionStore.refresh(forUID: uid)
+                async let f: () = friendStore.refresh(forUID: uid)
+                async let g: () = groupStore.refresh(forUID: uid)
+                async let c: () = chatStore.refresh(forUID: uid)
+                _ = await (q, f, g, c)
+            }
             .navigationTitle("フィード")
             .navigationBarTitleDisplayMode(.inline)
         }

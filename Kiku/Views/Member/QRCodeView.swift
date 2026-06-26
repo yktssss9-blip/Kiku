@@ -4,10 +4,14 @@ import CoreImage.CIFilterBuiltins
 struct QRCodeView: View {
     let username: String
 
+    private var addURL: String {
+        "https://shigodeki-8e49a.web.app/add?username=\(username)"
+    }
+
     private var qrImage: UIImage {
         let context = CIContext()
         let filter = CIFilter.qrCodeGenerator()
-        filter.message = Data("kiku://add?username=\(username)".utf8)
+        filter.message = Data(addURL.utf8)
         filter.correctionLevel = "M"
         guard let output = filter.outputImage else { return UIImage() }
         let scaled = output.transformed(by: CGAffineTransform(scaleX: 10, y: 10))
@@ -21,7 +25,7 @@ struct QRCodeView: View {
                 VStack(spacing: 6) {
                     Text("マイQRコード")
                         .font(.headline)
-                    Text("相手にスキャンしてもらってください")
+                    Text("スキャンまたはリンクを共有してください")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -39,17 +43,29 @@ struct QRCodeView: View {
                 Text("@\(username)")
                     .font(.title3.weight(.semibold))
 
-                ShareLink(
-                    item: Image(uiImage: qrImage),
-                    preview: SharePreview("Kiku - @\(username)", image: Image(uiImage: qrImage))
-                ) {
-                    Label("QRコードを共有", systemImage: "square.and.arrow.up")
-                        .font(.subheadline.weight(.semibold))
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 12)
-                        .background(Color.blue)
-                        .foregroundStyle(.white)
-                        .clipShape(Capsule())
+                VStack(spacing: 12) {
+                    ShareLink(
+                        item: Image(uiImage: qrImage),
+                        preview: SharePreview("Kiku - @\(username)", image: Image(uiImage: qrImage))
+                    ) {
+                        Label("QRコードを共有", systemImage: "qrcode")
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 12)
+                            .background(Color.blue)
+                            .foregroundStyle(.white)
+                            .clipShape(Capsule())
+                    }
+
+                    ShareLink(item: addURL) {
+                        Label("リンクを共有", systemImage: "link")
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 12)
+                            .background(Color(UIColor.secondarySystemBackground))
+                            .foregroundStyle(.primary)
+                            .clipShape(Capsule())
+                    }
                 }
             }
             .padding(.vertical, 32)
