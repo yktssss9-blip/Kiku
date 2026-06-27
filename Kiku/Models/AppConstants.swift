@@ -2,7 +2,7 @@ import Foundation
 
 enum AppConstants {
     // TODO: App Store 公開後に実際の ID に差し替えること（AnswerView.swift の定数も同時に削除する）
-    static let appStoreID = ""
+    static let appStoreID = "6777615871"
 
     static var appStoreReviewURL: URL? {
         guard !appStoreID.isEmpty else { return nil }

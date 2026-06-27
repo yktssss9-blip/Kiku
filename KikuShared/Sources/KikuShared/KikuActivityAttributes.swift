@@ -56,4 +56,24 @@ public struct KikuActivityAttributes: ActivityAttributes {
         self.sentAt = sentAt
         self.choices = choices
     }
+
+    enum CodingKeys: String, CodingKey {
+        case questionId, questionText, totalCount, memberId, memberName, sentAt, choices
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        questionId   = try c.decode(String.self, forKey: .questionId)
+        questionText = try c.decode(String.self, forKey: .questionText)
+        totalCount   = try c.decode(Int.self,    forKey: .totalCount)
+        memberId     = try c.decode(String.self, forKey: .memberId)
+        memberName   = try c.decode(String.self, forKey: .memberName)
+        choices      = try c.decodeIfPresent([String].self, forKey: .choices) ?? ["yes", "no"]
+        // push-to-start は Unix タイムスタンプ（秒）で送られるため Double → Date 変換
+        if let ts = try? c.decode(Double.self, forKey: .sentAt) {
+            sentAt = ts > 1_000_000_000 ? Date(timeIntervalSince1970: ts) : Date(timeIntervalSinceReferenceDate: ts)
+        } else {
+            sentAt = try c.decode(Date.self, forKey: .sentAt)
+        }
+    }
 }

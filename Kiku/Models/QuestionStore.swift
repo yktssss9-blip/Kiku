@@ -223,6 +223,7 @@ class QuestionStore: ObservableObject {
         DispatchQueue.main.async {
             self.receivedMemberMap = memberMap
             self.receivedQuestions = merged
+            self.applyPendingFromSharedStore()
             for (q, memberId) in newlyDetected {
                 self.onReceivedQuestion?(q, memberId)
             }
@@ -431,21 +432,26 @@ class QuestionStore: ObservableObject {
 
         updateAnswerInFirestore(questionId: questionId, memberId: memberId,
                                 value: value, answeredAt: now)
+        Task { @MainActor in
+            await ActivityManager.shared.end(questionId: questionId, memberId: memberId)
+        }
     }
 
     func applyPendingFromSharedStore() {
         guard let defaults = UserDefaults(suiteName: "group.com.yukichi.kiku") else { return }
-        let keys = defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix("answer.") }
+        let keys = defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix("answer.") && !$0.hasPrefix("answer_ts.") }
         for key in keys {
             let parts = key.split(separator: ".").map(String.init)
             guard parts.count == 3,
                   let qid   = UUID(uuidString: parts[1]),
                   let mid   = UUID(uuidString: parts[2]),
                   let value = defaults.string(forKey: key) else { continue }
-            defaults.removeObject(forKey: key)
+            let tsKey = "answer_ts.\(parts[1]).\(parts[2])"
             if let idx  = questions.firstIndex(where: { $0.id == qid }),
                let aidx = questions[idx].answers.firstIndex(where: { $0.memberId == mid }),
                questions[idx].answers[aidx].value == "pending" {
+                defaults.removeObject(forKey: key)
+                defaults.removeObject(forKey: tsKey)
                 let now     = Date()
                 questions[idx].answers[aidx].value      = value
                 questions[idx].answers[aidx].answeredAt = now
@@ -475,7 +481,19 @@ class QuestionStore: ObservableObject {
                     }
                 }
             } else if receivedQuestions.contains(where: { $0.id == qid }) {
+                defaults.removeObject(forKey: key)
+                defaults.removeObject(forKey: tsKey)
                 submitReceived(questionId: qid, memberId: mid, value: value)
+            } else {
+                let ts = defaults.double(forKey: tsKey)
+                if ts > 0 {
+                    if Date().timeIntervalSince1970 - ts > 300 {
+                        defaults.removeObject(forKey: key)
+                        defaults.removeObject(forKey: tsKey)
+                    }
+                } else {
+                    defaults.set(Date().timeIntervalSince1970, forKey: tsKey)
+                }
             }
         }
     }

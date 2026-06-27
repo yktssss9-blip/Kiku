@@ -367,6 +367,7 @@ export const notifyOnQuestionCreated = onDocumentCreated(
             memberId,
             memberName,
             sentAt,
+            choices,
           },
           "content-state": {
             yesCount: 0,
@@ -374,7 +375,7 @@ export const notifyOnQuestionCreated = onDocumentCreated(
             pendingCount: totalCount,
           },
           alert: {
-            title: "きく",
+            title: notificationTitle,
             body: text,
           },
         },

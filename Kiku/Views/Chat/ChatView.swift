@@ -329,6 +329,10 @@ struct MessageBubble: View {
     @EnvironmentObject private var chatStore: ChatStore
     @EnvironmentObject private var profileStore: ProfileStore
     @EnvironmentObject private var friendStore: FriendStore
+    @EnvironmentObject private var pointStore: PointStore
+    @EnvironmentObject private var purchaseStore: PurchaseStore
+
+    @State private var showProfile = false
 
     var body: some View {
         VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
@@ -341,6 +345,71 @@ struct MessageBubble: View {
                 reactionBadgeRow
             }
         }
+        .sheet(isPresented: $showProfile) {
+            profileSheet
+        }
+    }
+
+    // MARK: - プロフィールシート
+
+    @ViewBuilder
+    private var profileSheet: some View {
+        let targetFriend: Friend = {
+            if message.isFromMe {
+                return Friend(id: profileStore.myId, name: profileStore.name, emoji: profileStore.emoji, photoURL: profileStore.photoURL)
+            } else if let uid = message.senderFirebaseUID,
+                      let friend = friendStore.friends.first(where: { $0.firebaseUID == uid }) {
+                return friend
+            } else {
+                return Friend(id: message.senderId ?? UUID(), name: message.senderName, emoji: message.senderEmoji)
+            }
+        }()
+
+        let me = Friend(id: profileStore.myId, name: profileStore.name, emoji: profileStore.emoji, photoURL: profileStore.photoURL)
+        let all = [me] + friendStore.friends
+        let ranked = all
+            .map { (friend: $0, avgSpeed: pointStore.averageSpeed(for: $0.id), isMe: $0.id == profileStore.myId) }
+            .filter { $0.isMe || $0.avgSpeed != nil }
+            .sorted {
+                switch ($0.avgSpeed, $1.avgSpeed) {
+                case (.some(let a), .some(let b)): return a < b
+                case (.some, .none): return true
+                default: return false
+                }
+            }
+            .enumerated()
+            .map { (rank: $0.offset + 1, friend: $0.element.friend, avgSpeed: $0.element.avgSpeed, isMe: $0.element.isMe) }
+
+        let entry = ranked.first(where: { $0.friend.id == targetFriend.id })
+        let rank = entry?.rank ?? ranked.count + 1
+        let outOf = ranked.count
+        let avgSpeed = entry?.avgSpeed ?? pointStore.averageSpeed(for: targetFriend.id)
+        let answerCount = pointStore.history(for: targetFriend.id).count
+        let isPro = message.isFromMe ? purchaseStore.isPro : friendStore.isPro(targetFriend)
+
+        VStack(spacing: 16) {
+            Capsule()
+                .frame(width: 36, height: 5)
+                .foregroundStyle(Color(UIColor.systemGray4))
+                .padding(.top, 12)
+
+            ProfileIDCard(
+                name: targetFriend.name,
+                emoji: targetFriend.emoji,
+                profileImage: nil,
+                username: targetFriend.username,
+                rank: rank,
+                outOf: outOf,
+                avgSpeed: avgSpeed,
+                answerCount: answerCount,
+                isPro: isPro
+            )
+            .padding(.horizontal)
+
+            Spacer()
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.hidden)
     }
 
     private var reactionBadgeRow: some View {
@@ -385,6 +454,7 @@ struct MessageBubble: View {
                 .foregroundStyle(.white)
                 .clipShape(RoundedRectangle(cornerRadius: 18))
             UserAvatarView(emoji: profileStore.emoji, photoURL: profileStore.photoURL, size: 32)
+                .onTapGesture { showProfile = true }
         }
     }
 
@@ -396,6 +466,7 @@ struct MessageBubble: View {
             UserAvatarView(emoji: message.senderEmoji.isEmpty ? "👤" : message.senderEmoji,
                            photoURL: senderPhotoURL,
                            size: 32)
+                .onTapGesture { showProfile = true }
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(message.senderName.isEmpty ? "メンバー" : message.senderName)

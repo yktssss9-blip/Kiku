@@ -7,7 +7,7 @@
     "ja"
   ],
   "locale": "ja",
-  "device": "ipad",
+  "device": "iphone",
   "orientation": "portrait",
   "appIcon": "/app-icon.png",
   "slidesByDevice": {
@@ -118,7 +118,7 @@
         "headline": {
           "ja": "回答速度で\nランキング競争"
         },
-        "screenshot": "/screenshots/uploaded/0d0167712c61bad8.png",
+        "screenshot": "/screenshots/uploaded/dbb7d5cba46cd036.jpg",
         "transforms": {
           "device": {
             "x": 136,
@@ -147,7 +147,7 @@
         "headline": {
           "ja": "\n"
         },
-        "screenshot": "/screenshots/apple/iphone/ja/01-ranking.png",
+        "screenshot": "/screenshots/uploaded/6f6797c16eeb756a.jpg",
         "inverted": true,
         "transforms": {
           "device": {
