@@ -39,6 +39,18 @@ function getApnsProviderToken(): string {
   return token;
 }
 
+async function incrementAndGetBadge(uid: string): Promise<number> {
+  const ref = admin.firestore().collection("users").doc(uid);
+  const result = await admin.firestore().runTransaction(async (tx) => {
+    const doc = await tx.get(ref);
+    const current = (doc.get("badgeCount") as number) ?? 0;
+    const next = current + 1;
+    tx.update(ref, { badgeCount: next });
+    return next;
+  });
+  return result;
+}
+
 function sendRegularApnsPush(
   deviceToken: string,
   payload: Record<string, unknown>
@@ -184,6 +196,7 @@ export const sendReminderRequest = onDocumentCreated(
       const apnsToken = doc.get("apnsDeviceToken") as string | undefined;
       const fcmToken = doc.get("fcmToken") as string | undefined;
       const memberId = recipientMemberMap[doc.id];
+      const badge = await incrementAndGetBadge(doc.id);
 
       if (apnsToken && memberId) {
         const payload = {
@@ -193,6 +206,7 @@ export const sendReminderRequest = onDocumentCreated(
               body: question.text as string,
             },
             sound: "default",
+            badge,
           },
           questionId,
           memberId,
@@ -208,6 +222,7 @@ export const sendReminderRequest = onDocumentCreated(
               token: fcmToken,
               notification: { title: "⏰ まだ回答がありません", body: question.text as string },
               data: { questionId, memberId: memberId ?? "", isReminder: "true" },
+              apns: { payload: { aps: { badge } } },
             });
           }
         }
@@ -216,6 +231,7 @@ export const sendReminderRequest = onDocumentCreated(
           token: fcmToken,
           notification: { title: "⏰ まだ回答がありません", body: question.text as string },
           data: { questionId, memberId: memberId ?? "", isReminder: "true" },
+          apns: { payload: { aps: { badge } } },
         });
       }
     }
@@ -294,6 +310,7 @@ export const notifyOnQuestionCreated = onDocumentCreated(
       const apnsToken = doc.get("apnsDeviceToken") as string | undefined;
       const fcmToken = doc.get("fcmToken") as string | undefined;
       const memberId = recipientMemberMap[doc.id];
+      const badge = await incrementAndGetBadge(doc.id);
 
       if (apnsToken && memberId) {
         const payload = {
@@ -305,6 +322,7 @@ export const notifyOnQuestionCreated = onDocumentCreated(
             sound: "default",
             category: categoryId,
             "mutable-content": 1,
+            badge,
           },
           questionId,
           memberId,
@@ -321,7 +339,7 @@ export const notifyOnQuestionCreated = onDocumentCreated(
               token: fcmToken,
               notification: { title: notificationTitle, body: text },
               data,
-              apns: { payload: { aps: { sound: "default", category: categoryId } } },
+              apns: { payload: { aps: { sound: "default", category: categoryId, badge } } },
             });
           }
         }
@@ -332,7 +350,7 @@ export const notifyOnQuestionCreated = onDocumentCreated(
           token: fcmToken,
           notification: { title: notificationTitle, body: text },
           data,
-          apns: { payload: { aps: { sound: "default", category: categoryId } } },
+          apns: { payload: { aps: { sound: "default", category: categoryId, badge } } },
         });
       }
 
@@ -434,6 +452,8 @@ export const notifyOnFriendRequest = onDocumentCreated(
       fromPhotoURL: data.fromPhotoURL ?? "",
     };
 
+    const badge = await incrementAndGetBadge(toUID);
+
     if (apnsToken) {
       const payload = {
         aps: {
@@ -443,6 +463,7 @@ export const notifyOnFriendRequest = onDocumentCreated(
           },
           sound: "default",
           category: "FRIEND_REQUEST",
+          badge,
         },
         ...extraData,
       };
@@ -460,7 +481,7 @@ export const notifyOnFriendRequest = onDocumentCreated(
         token: fcmToken,
         notification: { title: notificationTitle, body: notificationBody },
         data: extraData,
-        apns: { payload: { aps: { category: "FRIEND_REQUEST", sound: "default" } } },
+        apns: { payload: { aps: { category: "FRIEND_REQUEST", sound: "default", badge } } },
       });
       logger.info(`友達申請通知送信(FCM): requestId=${requestId} to=${toUID}`);
     }
@@ -712,12 +733,15 @@ export const notifyOnChatMessage = onDocumentUpdated(
         continue;
       }
 
+      const badge = await incrementAndGetBadge(uid);
+
       if (apnsToken) {
         const payload = {
           aps: {
             alert: { title: notifTitle, body: text },
             sound: "default",
             category: "CHAT_MESSAGE",
+            badge,
           },
           ...extraData,
         };
@@ -735,7 +759,7 @@ export const notifyOnChatMessage = onDocumentUpdated(
           token: fcmToken,
           notification: { title: notifTitle, body: text },
           data: extraData,
-          apns: { payload: { aps: { category: "CHAT_MESSAGE", sound: "default" } } },
+          apns: { payload: { aps: { category: "CHAT_MESSAGE", sound: "default", badge } } },
         });
         logger.info(`チャット通知送信(FCM): questionId=${questionId} to=${uid}`);
       }

@@ -110,9 +110,7 @@ struct KikuApp: App {
                         questionStore.applyPendingFromSharedStore()
                         applyPendingOpenPickers()
                         Task { await friendStore.refreshFriendProfiles() }
-                        Task {
-                            try? await UNUserNotificationCenter.current().setBadgeCount(chatStore.totalUnread)
-                        }
+                        updateBadgeCount()
                         for q in questionStore.receivedQuestions where q.summary().pending > 0 {
                             Task { @MainActor in
                                 await ActivityManager.shared.update(questionId: q.id, summary: q.summary())
@@ -150,10 +148,11 @@ struct KikuApp: App {
                     .onOpenURL { url in
                         handleURL(url)
                     }
-                    .onChange(of: chatStore.totalUnread) { _, count in
-                        Task {
-                            try? await UNUserNotificationCenter.current().setBadgeCount(count)
-                        }
+                    .onChange(of: chatStore.totalUnread) { _, _ in
+                        updateBadgeCount()
+                    }
+                    .onReceive(questionStore.$receivedQuestions) { _ in
+                        updateBadgeCount()
                     }
                     .onAppear {
                         applyPendingOpenPickers()
@@ -597,6 +596,17 @@ struct KikuApp: App {
         let info = ActivityAuthorizationInfo()
         if !info.areActivitiesEnabled {
             showLiveActivityDisabledAlert = true
+        }
+    }
+
+    private func updateBadgeCount() {
+        let count = chatStore.totalUnread + questionStore.pendingReceivedCount
+        Task {
+            try? await UNUserNotificationCenter.current().setBadgeCount(count)
+        }
+        if let uid = Auth.auth().currentUser?.uid {
+            Firestore.firestore().collection("users").document(uid)
+                .setData(["badgeCount": count], merge: true)
         }
     }
 

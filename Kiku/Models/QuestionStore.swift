@@ -114,6 +114,15 @@ class QuestionStore: ObservableObject {
     /// 他ユーザーから届いた質問（Firestoreが正・ローカル永続化なし）
     @Published var receivedQuestions: [Question] = []
 
+    var pendingReceivedCount: Int {
+        receivedQuestions.filter { q in
+            guard let myMemberId = receivedMemberMap[q.id],
+                  let answer = q.answers.first(where: { $0.memberId == myMemberId })
+            else { return false }
+            return answer.value == "pending"
+        }.count
+    }
+
     /// 受信質問ごとの自分の memberId（questionId → memberId）
     @Published var receivedMemberMap: [UUID: UUID] = [:]
 
