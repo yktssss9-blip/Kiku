@@ -13,6 +13,7 @@ struct TemplateListSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var editingScheduleFor: UUID? = nil
+    @State private var showAddTemplate = false
 
     var body: some View {
         NavigationStack {
@@ -69,10 +70,21 @@ struct TemplateListSheet: View {
             .navigationTitle("テンプレート")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button { showAddTemplate = true } label: {
+                        Image(systemName: "plus")
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("閉じる") { dismiss() }
                         .fontWeight(.semibold)
                 }
+            }
+            .sheet(isPresented: $showAddTemplate) {
+                TemplateAddSheet()
+                    .environmentObject(templateStore)
+                    .environmentObject(friendStore)
+                    .environmentObject(groupStore)
             }
             .sheet(item: Binding(
                 get: { editingScheduleFor.flatMap { id in templateStore.templates.first { $0.id == id } } },
