@@ -98,8 +98,11 @@ struct ResultCardView: View {
     }
 
     private func statusEmoji(_ value: String) -> String {
-        if value == "yes"        { return "✅" }
-        if answerIsNo(value)     { return "❌" }
+        if isTimeValue(value)        { return "🕐" }
+        if value.hasPrefix("star:")  { return "⭐" }
+        if value.hasPrefix("emoji:") { return String(value.dropFirst(6)) }
+        if value == "yes" || value.hasPrefix("yes:") { return "✅" }
+        if answerIsNo(value)         { return "❌" }
         return "⏳"
     }
 

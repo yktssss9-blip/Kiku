@@ -166,7 +166,11 @@ struct QuestionFeedCard: View {
 
     @ViewBuilder
     private func answerIcon(for value: String) -> some View {
-        if answerIsYes(value) {
+        if isTimeValue(value) || value.hasPrefix("star:") || value.hasPrefix("emoji:") {
+            Text(shortLabel(for: value))
+                .font(.caption).fontWeight(.semibold).foregroundStyle(.blue)
+                .lineLimit(1)
+        } else if answerIsYes(value) {
             Text("○")
                 .font(.caption).fontWeight(.bold).foregroundStyle(.green)
                 .frame(width: 20, height: 20)
