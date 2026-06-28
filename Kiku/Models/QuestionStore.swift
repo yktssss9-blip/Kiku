@@ -433,11 +433,20 @@ class QuestionStore: ObservableObject {
         receivedQuestions[idx].answers[aidx].value      = value
         receivedQuestions[idx].answers[aidx].answeredAt = now
 
+        NotificationManager.shared.cancelAutoReminder(questionId: questionId, memberId: memberId)
+
         let question = receivedQuestions[idx]
         let elapsed  = now.timeIntervalSince(question.createdAt)
         pointStore?.add(questionId: questionId, memberId: memberId,
                         questionText: question.text, elapsed: elapsed)
         onAnswered?(questionId, memberId, question.text, value)
+
+        if receivedQuestions[idx].isCompleted && !notifiedCompletionIds.contains(questionId) {
+            markCompletionNotified(questionId)
+            let completedQ = receivedQuestions[idx]
+            NotificationCenter.default.post(name: .kikuQuestionCompleted, object: completedQ)
+            NotificationManager.shared.scheduleCompletion(question: completedQ)
+        }
 
         updateAnswerInFirestore(questionId: questionId, memberId: memberId,
                                 value: value, answeredAt: now)
@@ -496,7 +505,7 @@ class QuestionStore: ObservableObject {
             } else {
                 let ts = defaults.double(forKey: tsKey)
                 if ts > 0 {
-                    if Date().timeIntervalSince1970 - ts > 300 {
+                    if Date().timeIntervalSince1970 - ts > 1800 {
                         defaults.removeObject(forKey: key)
                         defaults.removeObject(forKey: tsKey)
                     }
@@ -605,14 +614,11 @@ class QuestionStore: ObservableObject {
             .filter { f in question.answers.contains { $0.memberId == f.id } }
             .reduce(into: [String: Any]()) { $0[$1.id.uuidString] = $1.name }
         if !memberNamesDict.isEmpty { dict["memberNames"] = memberNamesDict }
-        let recipientUIDs = friends
+        let relevantFriends = friends
             .filter { f in question.answers.contains { $0.memberId == f.id } && !f.firebaseUID.isEmpty }
-            .map(\.firebaseUID)
-        if !recipientUIDs.isEmpty { dict["recipientUIDs"] = recipientUIDs }
-        let recipientMemberMap = friends
-            .filter { f in question.answers.contains { $0.memberId == f.id } && !f.firebaseUID.isEmpty }
+        dict["recipientUIDs"] = relevantFriends.map(\.firebaseUID)
+        dict["recipientMemberMap"] = relevantFriends
             .reduce(into: [String: Any]()) { $0[$1.firebaseUID] = $1.id.uuidString }
-        if !recipientMemberMap.isEmpty { dict["recipientMemberMap"] = recipientMemberMap }
         if let memo = question.memo, !memo.isEmpty { dict["memo"] = memo }
         return dict
     }

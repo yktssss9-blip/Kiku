@@ -34,6 +34,28 @@ class AppDelegate: NSObject, UIApplicationDelegate, MessagingDelegate {
         }
     }
 
+    func application(_ application: UIApplication,
+                     didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        guard let questionId = userInfo["questionId"] as? String,
+              let memberId = userInfo["memberId"] as? String,
+              let questionText = userInfo["questionText"] as? String else {
+            completionHandler(.noData)
+            return
+        }
+        let totalCount = userInfo["totalCount"] as? Int ?? 0
+        let memberName = userInfo["memberName"] as? String ?? ""
+        let choices = userInfo["choices"] as? [String] ?? ["yes", "no"]
+
+        Task { @MainActor in
+            ActivityManager.shared.startFromPush(
+                questionId: questionId, questionText: questionText, totalCount: totalCount,
+                memberId: memberId, memberName: memberName, choices: choices
+            )
+        }
+        completionHandler(.newData)
+    }
+
     // FCMトークンが更新されたらFirestoreに保存
     func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
         guard let token = fcmToken,
@@ -111,6 +133,9 @@ struct KikuApp: App {
                         applyPendingOpenPickers()
                         Task { await friendStore.refreshFriendProfiles() }
                         updateBadgeCount()
+                        Task { @MainActor in
+                            await ActivityManager.shared.cleanupStaleActivities()
+                        }
                         for q in questionStore.receivedQuestions where q.summary().pending > 0 {
                             Task { @MainActor in
                                 await ActivityManager.shared.update(questionId: q.id, summary: q.summary())
@@ -134,6 +159,16 @@ struct KikuApp: App {
                         NotificationCenter.default.publisher(for: .kikuFriendRequestResponse)
                     ) { _ in
                         applyPendingFriendRequestResponses()
+                    }
+                    // 質問完了 → Live Activity 終了
+                    .onReceive(
+                        NotificationCenter.default.publisher(for: .kikuQuestionCompleted)
+                    ) { notification in
+                        if let question = notification.object as? Question {
+                            Task { @MainActor in
+                                await ActivityManager.shared.end(questionId: question.id)
+                            }
+                        }
                     }
                     .alert("Live Activityを有効にしてください", isPresented: $showLiveActivityDisabledAlert) {
                         Button("設定を開く") {

@@ -275,7 +275,7 @@ export const notifyOnQuestionCreated = onDocumentCreated(
     const text: string = question.text ?? "";
     const answers: Record<string, unknown> =
       typeof question.answers === "object" && question.answers !== null ? question.answers : {};
-    const totalCount = Object.keys(answers).length;
+    const totalCount = Math.max(Object.keys(answers).length, recipientUIDs.length);
 
     const targetUIDs = recipientUIDs.filter((uid) => uid !== createdBy);
     if (targetUIDs.length === 0) {
@@ -303,13 +303,16 @@ export const notifyOnQuestionCreated = onDocumentCreated(
     const categoryId = "KIKU_" + choices.map(String).sort().join("_");
 
     const fcmFallbackMessages: admin.messaging.Message[] = [];
-    const pushToStartTargets: { deviceToken: string; uid: string }[] = [];
+    const pushPromises: Promise<void>[] = [];
     let apnsSuccessCount = 0;
+    const sentAt = Math.floor(Date.now() / 1000);
 
     for (const doc of userDocs) {
       const apnsToken = doc.get("apnsDeviceToken") as string | undefined;
       const fcmToken = doc.get("fcmToken") as string | undefined;
+      const pushToStartToken = doc.get("liveActivityPushToStartToken") as string | undefined;
       const memberId = recipientMemberMap[doc.id];
+      const memberName = memberNames[memberId] ?? "";
       const badge = await incrementAndGetBadge(doc.id);
 
       if (apnsToken && memberId) {
@@ -322,29 +325,34 @@ export const notifyOnQuestionCreated = onDocumentCreated(
             sound: "default",
             category: categoryId,
             "mutable-content": 1,
+            "content-available": 1,
             badge,
           },
           questionId,
           memberId,
+          questionText: text,
+          totalCount,
+          memberName,
+          choices,
         };
-        try {
-          await sendRegularApnsPush(apnsToken, payload);
-          apnsSuccessCount++;
-        } catch (error) {
-          logger.error(`通知APNs送信失敗 uid=${doc.id}`, error);
-          if (fcmToken) {
-            const data: Record<string, string> = { questionId };
-            if (memberId) data.memberId = memberId;
-            fcmFallbackMessages.push({
-              token: fcmToken,
-              notification: { title: notificationTitle, body: text },
-              data,
-              apns: { payload: { aps: { sound: "default", category: categoryId, badge } } },
-            });
-          }
-        }
+        const alertPromise = sendRegularApnsPush(apnsToken, payload)
+          .then(() => { apnsSuccessCount++; })
+          .catch((error) => {
+            logger.error(`通知APNs送信失敗 uid=${doc.id}`, error);
+            if (fcmToken) {
+              const data: Record<string, string> = { questionId, questionText: text, totalCount: String(totalCount), memberName };
+              if (memberId) data.memberId = memberId;
+              fcmFallbackMessages.push({
+                token: fcmToken,
+                notification: { title: notificationTitle, body: text },
+                data,
+                apns: { payload: { aps: { sound: "default", category: categoryId, badge } } },
+              });
+            }
+          });
+        pushPromises.push(alertPromise);
       } else if (fcmToken) {
-        const data: Record<string, string> = { questionId };
+        const data: Record<string, string> = { questionId, questionText: text, totalCount: String(totalCount), memberName };
         if (memberId) data.memberId = memberId;
         fcmFallbackMessages.push({
           token: fcmToken,
@@ -354,11 +362,50 @@ export const notifyOnQuestionCreated = onDocumentCreated(
         });
       }
 
-      const pushToStartToken = doc.get("liveActivityPushToStartToken") as string | undefined;
       if (pushToStartToken && memberId) {
-        pushToStartTargets.push({ deviceToken: pushToStartToken, uid: doc.id });
+        const livePayload = {
+          aps: {
+            timestamp: sentAt,
+            event: "start",
+            "stale-date": sentAt + 1800,
+            "attributes-type": "KikuActivityAttributes",
+            attributes: {
+              questionId,
+              questionText: text,
+              totalCount,
+              memberId,
+              memberName,
+              sentAt,
+              choices,
+            },
+            "content-state": {
+              yesCount: 0,
+              noCount: 0,
+              pendingCount: totalCount,
+            },
+            alert: {
+              title: notificationTitle,
+              body: text,
+            },
+          },
+        };
+        const livePromise = sendLiveActivityPushToStart(pushToStartToken, livePayload)
+          .then(() => {
+            logger.info(`Live Activity push-to-start送信成功: questionId=${questionId} uid=${doc.id}`);
+          })
+          .catch(async (error: unknown) => {
+            logger.error(`Live Activity push-to-start送信失敗: questionId=${questionId} uid=${doc.id}`, error);
+            if (error instanceof Error && error.message?.includes("status=410")) {
+              await admin.firestore().collection("users").doc(doc.id)
+                .update({ liveActivityPushToStartToken: admin.firestore.FieldValue.delete() });
+              logger.info(`期限切れpush-to-startトークン削除: uid=${doc.id}`);
+            }
+          });
+        pushPromises.push(livePromise);
       }
     }
+
+    await Promise.all(pushPromises);
 
     if (fcmFallbackMessages.length > 0) {
       const response = await admin.messaging().sendEach(fcmFallbackMessages);
@@ -367,47 +414,6 @@ export const notifyOnQuestionCreated = onDocumentCreated(
       );
     } else {
       logger.info(`通知送信: questionId=${questionId} APNs=${apnsSuccessCount}`);
-    }
-
-    const sentAt = Math.floor(Date.now() / 1000);
-    for (const target of pushToStartTargets) {
-      const memberId = recipientMemberMap[target.uid];
-      const memberName = memberNames[memberId] ?? "";
-      const payload = {
-        aps: {
-          timestamp: sentAt,
-          event: "start",
-          "attributes-type": "KikuActivityAttributes",
-          attributes: {
-            questionId,
-            questionText: text,
-            totalCount,
-            memberId,
-            memberName,
-            sentAt,
-            choices,
-          },
-          "content-state": {
-            yesCount: 0,
-            noCount: 0,
-            pendingCount: totalCount,
-          },
-          alert: {
-            title: notificationTitle,
-            body: text,
-          },
-        },
-      };
-
-      try {
-        await sendLiveActivityPushToStart(target.deviceToken, payload);
-        logger.info(`Live Activity push-to-start送信成功: questionId=${questionId} uid=${target.uid}`);
-      } catch (error) {
-        logger.error(
-          `Live Activity push-to-start送信失敗: questionId=${questionId} uid=${target.uid}`,
-          error
-        );
-      }
     }
   }
 );

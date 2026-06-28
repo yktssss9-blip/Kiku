@@ -9,22 +9,73 @@ class ActivityManager: ObservableObject {
     static let shared = ActivityManager()
 
     @Published var lastError: String? = nil
-    @Published var isActive: Bool = false
+    var isActive: Bool { !Activity<KikuActivityAttributes>.activities.isEmpty }
 
     private var pushToStartTask: Task<Void, Never>? = nil
 
-    // push-to-startトークンを購読し、/users/{uid}.liveActivityPushToStartToken に保存
+    func cleanupStaleActivities() async {
+        for activity in Activity<KikuActivityAttributes>.activities {
+            let age = Date().timeIntervalSince(activity.attributes.sentAt)
+            if activity.activityState == .stale || activity.activityState == .ended || age > 1800 {
+                await activity.end(nil, dismissalPolicy: .immediate)
+            }
+        }
+        for activity in Activity<FriendRequestActivityAttributes>.activities {
+            let age = Date().timeIntervalSince(activity.attributes.sentAt)
+            if activity.activityState == .stale || activity.activityState == .ended || age > 86400 {
+                await activity.end(nil, dismissalPolicy: .immediate)
+            }
+        }
+    }
+
     func observePushToStartToken() {
         pushToStartTask?.cancel()
         pushToStartTask = Task {
+            await cleanupStaleActivities()
+
             if #available(iOS 17.2, *) {
                 for await data in Activity<KikuActivityAttributes>.pushToStartTokenUpdates {
                     let hex = data.map { String(format: "%02x", $0) }.joined()
                     guard let uid = Auth.auth().currentUser?.uid else { continue }
-                    try? await Firestore.firestore().collection("users").document(uid)
-                        .setData(["liveActivityPushToStartToken": hex], merge: true)
-                    print("[LiveActivity] push-to-startトークン保存: \(hex.prefix(20))...")
+                    do {
+                        try await Firestore.firestore().collection("users").document(uid)
+                            .setData(["liveActivityPushToStartToken": hex], merge: true)
+                        print("[LiveActivity] push-to-startトークン保存成功: \(hex.prefix(20))...")
+                    } catch {
+                        print("[LiveActivity] push-to-startトークン保存失敗: \(error)")
+                    }
                 }
+            }
+        }
+    }
+
+    func startFromPush(questionId: String, questionText: String, totalCount: Int,
+                       memberId: String, memberName: String, choices: [String]) {
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+
+        let alreadyExists = Activity<KikuActivityAttributes>.activities.contains {
+            $0.attributes.questionId == questionId && $0.attributes.memberId == memberId
+        }
+        if alreadyExists { return }
+
+        Task {
+            let attributes = KikuActivityAttributes(
+                questionId: questionId, questionText: questionText, totalCount: totalCount,
+                memberId: memberId, memberName: memberName, sentAt: Date(), choices: choices
+            )
+            let state = KikuActivityAttributes.ContentState(
+                yesCount: 0, noCount: 0, pendingCount: totalCount
+            )
+            do {
+                let activity = try Activity.request(
+                    attributes: attributes,
+                    content: .init(state: state, staleDate: Date().addingTimeInterval(600), relevanceScore: 1.0),
+                    pushType: .token
+                )
+                lastError = nil
+                print("✅ Live Activity started from push: \(activity.id)")
+            } catch {
+                print("❌ Live Activity from push error: \(error)")
             }
         }
     }
@@ -37,13 +88,14 @@ class ActivityManager: ObservableObject {
             return
         }
 
-        // 同じ質問・同じメンバーの既存Activityのみ終了（他メンバー分は維持）
+        let qid = question.id.uuidString
+        let mid = memberId.uuidString
+        let alreadyExists = Activity<KikuActivityAttributes>.activities.contains {
+            $0.attributes.questionId == qid && $0.attributes.memberId == mid
+        }
+        if alreadyExists { return }
+
         Task {
-            for activity in Activity<KikuActivityAttributes>.activities
-                where activity.attributes.questionId == question.id.uuidString
-                   && activity.attributes.memberId   == memberId.uuidString {
-                await activity.end(nil, dismissalPolicy: .immediate)
-            }
             await requestNew(question: question, memberId: memberId, memberName: memberName, choices: choices ?? question.answerChoices.map(\.rawValue))
         }
     }
@@ -67,12 +119,11 @@ class ActivityManager: ObservableObject {
                 attributes: attributes,
                 content: .init(
                     state:          state,
-                    staleDate:      Date().addingTimeInterval(600), // 10分間 fresh 維持
-                    relevanceScore: 1.0                              // 最高優先度で一番上に表示
+                    staleDate:      Date().addingTimeInterval(600),
+                    relevanceScore: 1.0
                 ),
-                pushType: nil
+                pushType: .token
             )
-            isActive = true
             lastError = nil
             print("✅ Live Activity started: \(activity.id)")
         } catch {
@@ -87,34 +138,36 @@ class ActivityManager: ObservableObject {
             let newState = KikuActivityAttributes.ContentState(
                 yesCount: summary.yes, noCount: summary.no, pendingCount: summary.pending
             )
-            await activity.update(.init(state: newState, staleDate: nil))
+            await activity.update(.init(state: newState, staleDate: Date().addingTimeInterval(600)))
         }
     }
 
-    // 質問全体のActivityを終了
     func end(questionId: UUID) async {
         for activity in Activity<KikuActivityAttributes>.activities
             where activity.attributes.questionId == questionId.uuidString {
             await activity.end(nil, dismissalPolicy: .immediate)
         }
-        isActive = false
+        if Activity<KikuActivityAttributes>.activities.isEmpty {
+            observePushToStartToken()
+        }
     }
 
-    // 特定メンバーのActivityを終了（回答後に呼ぶ）
     func end(questionId: UUID, memberId: UUID) async {
         for activity in Activity<KikuActivityAttributes>.activities
             where activity.attributes.questionId == questionId.uuidString
                && activity.attributes.memberId   == memberId.uuidString {
             await activity.end(nil, dismissalPolicy: .immediate)
         }
+        if Activity<KikuActivityAttributes>.activities.isEmpty {
+            observePushToStartToken()
+        }
     }
 
-    // すべてのActivityを終了（アカウント削除時に呼ぶ）
     func endAll() async {
         for activity in Activity<KikuActivityAttributes>.activities {
             await activity.end(nil, dismissalPolicy: .immediate)
         }
-        isActive = false
+        observePushToStartToken()
     }
 
     // MARK: - 友達申請 Live Activity
