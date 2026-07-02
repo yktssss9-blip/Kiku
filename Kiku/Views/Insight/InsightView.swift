@@ -39,15 +39,11 @@ struct InsightView: View {
         sortedFriends.map { buildInsight(for: $0) }
     }
 
-    /// 無料ユーザーに表示するインサイト（直近やり取りのあった2人まで）
-    private var visibleInsights: [FriendInsight] {
-        purchaseStore.isPro ? insights : Array(insights.prefix(2))
-    }
+    /// 全ユーザーに全友達のインサイトを表示（閲覧は無料）
+    private var visibleInsights: [FriendInsight] { insights }
 
-    /// 無料ユーザーに対してロック表示する残りの友達
-    private var lockedFriends: [Friend] {
-        purchaseStore.isPro ? [] : Array(sortedFriends.dropFirst(2))
-    }
+    /// ロック表示は廃止（全員に開放）
+    private var lockedFriends: [Friend] { [] }
 
     private func lastInteraction(with friend: Friend) -> Date {
         questionStore.questions

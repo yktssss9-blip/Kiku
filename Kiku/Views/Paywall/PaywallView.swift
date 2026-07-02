@@ -50,8 +50,6 @@ private struct ProPaywallContent: View {
     private let features: [(String, String)] = [
         ("📤", "テンプレートから質問を送信"),
         ("⚡️", "自動送信スケジュール"),
-        ("📊", "インサイト（全友達の回答傾向）"),
-        ("🎨", "自由記述・星評価・絵文字の回答タイプ"),
         ("♾️", "Stop Time 無制限"),
         ("👑", "支配者称号の解放"),
     ]

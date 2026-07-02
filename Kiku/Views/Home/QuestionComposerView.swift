@@ -255,11 +255,8 @@ struct QuestionComposerView: View {
             }
             .confirmationDialog("選択肢を追加", isPresented: $isShowingChoiceMenu, titleVisibility: .visible) {
                 ForEach(AnswerChoice.allCases.filter { c in c != .freeText && !choices.contains { $0.id == c.id } }) { choice in
-                    let isProChoice = (choice == .star || choice == .emoji)
-                    Button(choice.menuLabel + (isProChoice && !purchaseStore.isPro ? " 👑" : "")) {
-                        if isProChoice && !purchaseStore.isPro {
-                            showPaywall = true
-                        } else if choice == .star || choice == .emoji {
+                    Button(choice.menuLabel) {
+                        if choice == .star || choice == .emoji {
                             choices = [choice]
                         } else {
                             choices.append(choice)

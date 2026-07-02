@@ -410,9 +410,11 @@ struct SendTabView: View {
         HStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    // ＋ ボタン（全種類追加済みなら非表示）
-                    let available = AnswerChoice.allCases.filter { $0 != .freeText }
-                    if choices.count < available.count {
+                    // ＋ ボタン（最大2つ・絵文字/星は単独なので追加不可）
+                    let canAddMore = choices.count < 2
+                        && !choices.contains(.star)
+                        && !choices.contains(.emoji)
+                    if canAddMore {
                         Button { isShowingChoiceMenu = true } label: {
                             Image(systemName: "plus")
                                 .font(.system(size: 15, weight: .medium))
@@ -458,10 +460,12 @@ struct SendTabView: View {
         .confirmationDialog("選択肢を追加", isPresented: $isShowingChoiceMenu, titleVisibility: .visible) {
             let available = AnswerChoice.allCases.filter { c in c != .freeText && !choices.contains { $0.id == c.id } }
             ForEach(available) { choice in
-                let isPro = (choice == .star || choice == .emoji)
-                Button(choice.menuLabel + (isPro && !purchaseStore.isPro ? " 👑" : "")) {
-                    if isPro && !purchaseStore.isPro { showPaywall = true }
-                    else { choices.append(choice) }
+                Button(choice.menuLabel) {
+                    if choice == .star || choice == .emoji {
+                        choices = [choice]
+                    } else {
+                        choices.append(choice)
+                    }
                 }
             }
             Button("キャンセル", role: .cancel) {}

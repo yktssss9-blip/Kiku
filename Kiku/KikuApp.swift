@@ -188,6 +188,8 @@ struct KikuApp: App {
                     }
                     .onReceive(questionStore.$receivedQuestions) { _ in
                         updateBadgeCount()
+                        applyPendingOpenPickers()
+                        questionStore.applyPendingFromSharedStore()
                     }
                     .onAppear {
                         applyPendingOpenPickers()
@@ -308,12 +310,12 @@ struct KikuApp: App {
             else { continue }
 
             let pickerType = defaults?.string(forKey: key) ?? ""
-            defaults?.removeObject(forKey: key)
 
             let question = questionStore.questions.first(where: { $0.id == questionId })
                         ?? questionStore.receivedQuestions.first(where: { $0.id == questionId })
-            guard let question else { continue }
+            guard let question else { continue }  // 質問未ロードの場合はキーを残してリトライ待ち
 
+            defaults?.removeObject(forKey: key)
             let isOwn  = questionStore.questions.contains(where: { $0.id == questionId })
             let friend = friendStore.friends.first { $0.id == memberId }
             answerTarget = AnswerTarget(
